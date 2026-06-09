@@ -42,3 +42,11 @@ admin/public/assets
 # Admin specific development files
 admin/storage
 CLAUDE.md
+
+# Markdown files local-only (except README)
+*.md
+!README.md
+
+# Markdown files local-only (except README)
+*.md
+!README.md
