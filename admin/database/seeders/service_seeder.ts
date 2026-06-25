@@ -3,6 +3,7 @@ import { BaseSeeder } from '@adonisjs/lucid/seeders'
 import { ModelAttributes } from '@adonisjs/lucid/types/model'
 import env from '#start/env'
 import { SERVICE_NAMES } from '../../constants/service_names.js'
+import { KIWIX_LIBRARY_CMD } from '../../constants/kiwix.js'
 
 export default class ServiceSeeder extends BaseSeeder {
   // Use environment variable with fallback to production default
@@ -24,7 +25,7 @@ export default class ServiceSeeder extends BaseSeeder {
       icon: 'IconBooks',
       container_image: 'ghcr.io/kiwix/kiwix-serve:3.8.1',
       source_repo: 'https://github.com/kiwix/kiwix-tools',
-      container_command: '*.zim --address=all',
+      container_command: KIWIX_LIBRARY_CMD,
       container_config: JSON.stringify({
         HostConfig: {
           RestartPolicy: { Name: 'unless-stopped' },
@@ -70,7 +71,7 @@ export default class ServiceSeeder extends BaseSeeder {
       display_order: 3,
       description: 'Local AI chat that runs entirely on your hardware - no internet required',
       icon: 'IconWand',
-      container_image: 'ollama/ollama:0.15.2',
+      container_image: 'ollama/ollama:0.18.1',
       source_repo: 'https://github.com/ollama/ollama',
       container_command: 'serve',
       container_config: JSON.stringify({
@@ -94,7 +95,7 @@ export default class ServiceSeeder extends BaseSeeder {
       display_order: 11,
       description: 'Swiss Army knife for data encoding, encryption, and analysis',
       icon: 'IconChefHat',
-      container_image: 'ghcr.io/gchq/cyberchef:10.19.4',
+      container_image: 'ghcr.io/gchq/cyberchef:10.22.1',
       source_repo: 'https://github.com/gchq/CyberChef',
       container_command: null,
       container_config: JSON.stringify({

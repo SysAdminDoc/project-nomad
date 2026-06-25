@@ -5,6 +5,7 @@ import { createReadStream } from 'fs'
 import { LSBlockDevice, NomadDiskInfoRaw } from '../../types/system.js'
 
 export const ZIM_STORAGE_PATH = '/storage/zim'
+export const KIWIX_LIBRARY_XML_PATH = '/storage/zim/kiwix-library.xml'
 
 export async function listDirectoryContents(path: string): Promise<FileEntry[]> {
   const entries = await readdir(path, { withFileTypes: true })
@@ -49,7 +50,7 @@ export async function listDirectoryContentsRecursive(path: string): Promise<File
 export async function ensureDirectoryExists(path: string): Promise<void> {
   try {
     await stat(path)
-  } catch (error) {
+  } catch (error: any) {
     if (error.code === 'ENOENT') {
       await mkdir(path, { recursive: true })
     }
@@ -73,7 +74,7 @@ export async function getFile(
       return createReadStream(path)
     }
     return await readFile(path)
-  } catch (error) {
+  } catch (error: any) {
     if (error.code === 'ENOENT') {
       return null
     }
@@ -90,7 +91,7 @@ export async function getFileStatsIfExists(
       size: stats.size,
       modifiedTime: stats.mtime,
     }
-  } catch (error) {
+  } catch (error: any) {
     if (error.code === 'ENOENT') {
       return null
     }
@@ -101,7 +102,7 @@ export async function getFileStatsIfExists(
 export async function deleteFileIfExists(path: string): Promise<void> {
   try {
     await unlink(path)
-  } catch (error) {
+  } catch (error: any) {
     if (error.code !== 'ENOENT') {
       throw error
     }
@@ -138,21 +139,20 @@ export function matchesDevice(fsPath: string, deviceName: string): boolean {
   // Remove /dev/ and /dev/mapper/ prefixes
   const normalized = fsPath.replace('/dev/mapper/', '').replace('/dev/', '')
 
-  // Direct match
+  // Direct match (covers /dev/sda1 ↔ sda1, /dev/nvme0n1p1 ↔ nvme0n1p1)
   if (normalized === deviceName) {
     return true
   }
 
-  // LVM volumes use dashes instead of slashes
-  // e.g., ubuntu--vg-ubuntu--lv matches the device name
-  if (fsPath.includes(deviceName)) {
+  // LVM/device-mapper: e.g., /dev/mapper/ubuntu--vg-ubuntu--lv contains "ubuntu--lv"
+  if (fsPath.startsWith('/dev/mapper/') && fsPath.includes(deviceName)) {
     return true
   }
 
   return false
 }
 
-export function determineFileType(filename: string): 'image' | 'pdf' | 'text' | 'zim' | 'unknown' {
+export function determineFileType(filename: string): 'image' | 'pdf' | 'text' | 'epub' | 'zim' | 'unknown' {
   const ext = path.extname(filename).toLowerCase()
   if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'].includes(ext)) {
     return 'image'
@@ -160,6 +160,8 @@ export function determineFileType(filename: string): 'image' | 'pdf' | 'text' | 
     return 'pdf'
   } else if (['.txt', '.md', '.docx', '.rtf'].includes(ext)) {
     return 'text'
+  } else if (ext === '.epub') {
+    return 'epub'
   } else if (ext === '.zim') {
     return 'zim'
   } else {

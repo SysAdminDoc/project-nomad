@@ -1,4 +1,4 @@
-import { Job } from 'bullmq'
+import { Job, UnrecoverableError } from 'bullmq'
 import { QueueService } from '#services/queue_service'
 import { createHash } from 'crypto'
 import logger from '@adonisjs/core/services/logger'
@@ -44,7 +44,9 @@ export class DownloadModelJob {
     // Services are ready, initiate the download with progress tracking
     const result = await ollamaService.downloadModel(modelName, (progressPercent) => {
       if (progressPercent) {
-        job.updateProgress(Math.floor(progressPercent))
+        job.updateProgress(Math.floor(progressPercent)).catch((err) => {
+          if (err?.code !== -1) throw err
+        })
         logger.info(
           `[DownloadModelJob] Model ${modelName}: ${progressPercent}%`
         )
@@ -56,6 +58,8 @@ export class DownloadModelJob {
         status: 'downloading',
         progress: progressPercent,
         progress_timestamp: new Date().toISOString(),
+      }).catch((err) => {
+        if (err?.code !== -1) throw err
       })
     })
 
@@ -63,6 +67,10 @@ export class DownloadModelJob {
       logger.error(
         `[DownloadModelJob] Failed to initiate download for model ${modelName}: ${result.message}`
       )
+      // Don't retry errors that will never succeed (e.g., Ollama version too old)
+      if (result.retryable === false) {
+        throw new UnrecoverableError(result.message)
+      }
       throw new Error(`Failed to initiate download for model: ${result.message}`)
     }
 
@@ -85,6 +93,15 @@ export class DownloadModelJob {
     const queue = queueService.getQueue(this.queue)
     const jobId = this.getJobId(params.modelName)
 
+    // Clear any previous failed job so a fresh attempt can be dispatched
+    const existing = await queue.getJob(jobId)
+    if (existing) {
+      const state = await existing.getState()
+      if (state === 'failed') {
+        await existing.remove()
+      }
+    }
+
     try {
       const job = await queue.add(this.key, params, {
         jobId,
@@ -104,9 +121,9 @@ export class DownloadModelJob {
       }
     } catch (error) {
       if (error.message.includes('job already exists')) {
-        const existing = await queue.getJob(jobId)
+        const active = await queue.getJob(jobId)
         return {
-          job: existing,
+          job: active,
           created: false,
           message: `Job already exists for model ${params.modelName}`,
         }

@@ -61,12 +61,34 @@ export default class QueueWork extends BaseCommand {
         {
           connection: queueConfig.connection,
           concurrency: this.getConcurrencyForQueue(queueName),
+          lockDuration: 300000,
           autorun: true,
         }
       )
 
-      worker.on('failed', (job, err) => {
+      // Required to prevent Node from treating BullMQ internal errors as unhandled
+      // EventEmitter errors that crash the process.
+      worker.on('error', (err) => {
+        this.logger.error(`[${queueName}] Worker error: ${err.message}`)
+      })
+
+      worker.on('failed', async (job, err) => {
         this.logger.error(`[${queueName}] Job failed: ${job?.id}, Error: ${err.message}`)
+
+        // If this was a Wikipedia download, mark it as failed in the DB
+        if (job?.data?.filetype === 'zim' && job?.data?.url?.includes('wikipedia_en_')) {
+          try {
+            const { DockerService } = await import('#services/docker_service')
+            const { ZimService } = await import('#services/zim_service')
+            const dockerService = new DockerService()
+            const zimService = new ZimService(dockerService)
+            await zimService.onWikipediaDownloadComplete(job.data.url, false)
+          } catch (e: any) {
+            this.logger.error(
+              `[${queueName}] Failed to update Wikipedia status: ${e.message}`
+            )
+          }
+        }
       })
 
       worker.on('completed', (job) => {
@@ -80,6 +102,15 @@ export default class QueueWork extends BaseCommand {
     // Schedule nightly update checks (idempotent, will persist over restarts)
     await CheckUpdateJob.scheduleNightly()
     await CheckServiceUpdatesJob.scheduleNightly()
+
+    // Safety net: log unhandled rejections instead of crashing the worker process.
+    // Individual job errors are already caught by BullMQ; this catches anything that
+    // escapes (e.g. a fire-and-forget promise in a callback that rejects unexpectedly).
+    process.on('unhandledRejection', (reason) => {
+      this.logger.error(
+        `Unhandled promise rejection in worker process: ${reason instanceof Error ? reason.message : String(reason)}`
+      )
+    })
 
     // Graceful shutdown for all workers
     process.on('SIGTERM', async () => {

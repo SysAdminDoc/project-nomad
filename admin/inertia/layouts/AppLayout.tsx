@@ -4,7 +4,7 @@ import ChatButton from '~/components/chat/ChatButton'
 import ChatModal from '~/components/chat/ChatModal'
 import useServiceInstalledStatus from '~/hooks/useServiceInstalledStatus'
 import { SERVICE_NAMES } from '../../constants/service_names'
-import { Link } from '@inertiajs/react'
+import { Link, router } from '@inertiajs/react'
 import { IconArrowLeft } from '@tabler/icons-react'
 import classNames from 'classnames'
 
@@ -18,14 +18,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         window.location.pathname !== '/home' && (
           <Link href="/home" className="absolute top-60 md:top-48 left-4 flex items-center">
             <IconArrowLeft className="mr-2" size={24} />
-            <p className="text-lg text-gray-600">Back to Home</p>
+            <p className="text-lg text-text-secondary">Back to Home</p>
           </Link>
         )}
       <div
         className="p-2 flex gap-2 flex-col items-center justify-center cursor-pointer"
-        onClick={() => (window.location.href = '/home')}
+        onClick={() => router.visit('/home')}
       >
-        <img src="/project_nomad_logo.png" alt="Project Nomad Logo" className="h-40 w-40" />
+        <img src="/project_nomad_logo.webp" alt="Project Nomad Logo" className="h-40 w-40" />
         <h1 className="text-5xl font-bold text-desert-green">Command Center</h1>
       </div>
       <hr className={

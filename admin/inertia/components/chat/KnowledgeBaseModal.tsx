@@ -24,6 +24,7 @@ function sourceToDisplayName(source: string): string {
 export default function KnowledgeBaseModal({ aiAssistantName = "AI Assistant", onClose }: KnowledgeBaseModalProps) {
   const { addNotification } = useNotifications()
   const [files, setFiles] = useState<File[]>([])
+  const [isUploading, setIsUploading] = useState(false)
   const [confirmDeleteSource, setConfirmDeleteSource] = useState<string | null>(null)
   const fileUploaderRef = useRef<React.ComponentRef<typeof FileUploader>>(null)
   const { openModal, closeModal } = useModals()
@@ -37,22 +38,6 @@ export default function KnowledgeBaseModal({ aiAssistantName = "AI Assistant", o
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => api.uploadDocument(file),
-    onSuccess: (data) => {
-      addNotification({
-        type: 'success',
-        message: data?.message || 'Document uploaded and queued for processing',
-      })
-      setFiles([])
-      if (fileUploaderRef.current) {
-        fileUploaderRef.current.clear()
-      }
-    },
-    onError: (error: any) => {
-      addNotification({
-        type: 'error',
-        message: error?.message || 'Failed to upload document',
-      })
-    },
   })
 
   const deleteMutation = useMutation({
@@ -65,6 +50,17 @@ export default function KnowledgeBaseModal({ aiAssistantName = "AI Assistant", o
     onError: (error: any) => {
       addNotification({ type: 'error', message: error?.message || 'Failed to delete file.' })
       setConfirmDeleteSource(null)
+    },
+  })
+
+  const cleanupFailedMutation = useMutation({
+    mutationFn: () => api.cleanupFailedEmbedJobs(),
+    onSuccess: (data) => {
+      addNotification({ type: 'success', message: data?.message || 'Failed jobs cleaned up.' })
+      queryClient.invalidateQueries({ queryKey: ['failedEmbedJobs'] })
+    },
+    onError: (error: any) => {
+      addNotification({ type: 'error', message: error?.message || 'Failed to clean up jobs.' })
     },
   })
 
@@ -84,9 +80,34 @@ export default function KnowledgeBaseModal({ aiAssistantName = "AI Assistant", o
     },
   })
 
-  const handleUpload = () => {
-    if (files.length > 0) {
-      uploadMutation.mutate(files[0])
+  const handleUpload = async () => {
+    if (files.length === 0) return
+    setIsUploading(true)
+    let successCount = 0
+    const failedNames: string[] = []
+
+    for (const file of files) {
+      try {
+        await uploadMutation.mutateAsync(file)
+        successCount++
+      } catch (error: any) {
+        failedNames.push(file.name)
+      }
+    }
+
+    setIsUploading(false)
+    setFiles([])
+    fileUploaderRef.current?.clear()
+    queryClient.invalidateQueries({ queryKey: ['embed-jobs'] })
+
+    if (successCount > 0) {
+      addNotification({
+        type: 'success',
+        message: `${successCount} file${successCount > 1 ? 's' : ''} queued for processing.`,
+      })
+    }
+    for (const name of failedNames) {
+      addNotification({ type: 'error', message: `Failed to upload: ${name}` })
     }
   }
 
@@ -106,7 +127,7 @@ export default function KnowledgeBaseModal({ aiAssistantName = "AI Assistant", o
         cancelText='Cancel'
         confirmVariant='primary'
       >
-        <p className='text-gray-700'>
+        <p className='text-text-primary'>
           This will scan the NOMAD's storage directories for any new files and queue them for processing. This is useful if you've manually added files to the storage or want to ensure everything is up to date.
           This may cause a temporary increase in resource usage if new files are found and being processed. Are you sure you want to proceed?
         </p>
@@ -117,23 +138,23 @@ export default function KnowledgeBaseModal({ aiAssistantName = "AI Assistant", o
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm transition-opacity">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 shrink-0">
-          <h2 className="text-2xl font-semibold text-gray-800">Knowledge Base</h2>
+      <div className="bg-surface-primary rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-6 border-b border-border-subtle shrink-0">
+          <h2 className="text-2xl font-semibold text-text-primary">Knowledge Base</h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-surface-secondary rounded-lg transition-colors"
           >
-            <IconX className="h-6 w-6 text-gray-500" />
+            <IconX className="h-6 w-6 text-text-muted" />
           </button>
         </div>
         <div className="overflow-y-auto flex-1 p-6">
-          <div className="bg-white rounded-lg border shadow-md overflow-hidden">
+          <div className="bg-surface-primary rounded-lg border shadow-md overflow-hidden">
             <div className="p-6">
               <FileUploader
                 ref={fileUploaderRef}
                 minFiles={1}
-                maxFiles={1}
+                maxFiles={5}
                 onUpload={(uploadedFiles) => {
                   setFiles(Array.from(uploadedFiles))
                 }}
@@ -144,14 +165,14 @@ export default function KnowledgeBaseModal({ aiAssistantName = "AI Assistant", o
                   size="lg"
                   icon="IconUpload"
                   onClick={handleUpload}
-                  disabled={files.length === 0 || uploadMutation.isPending}
-                  loading={uploadMutation.isPending}
+                  disabled={files.length === 0 || isUploading}
+                  loading={isUploading}
                 >
                   Upload
                 </StyledButton>
               </div>
             </div>
-            <div className="border-t bg-white p-6">
+            <div className="border-t bg-surface-primary p-6">
               <h3 className="text-lg font-semibold text-desert-green mb-4">
                 Why upload documents to your Knowledge Base?
               </h3>
@@ -207,7 +228,20 @@ export default function KnowledgeBaseModal({ aiAssistantName = "AI Assistant", o
             </div>
           </div>
           <div className="my-8">
-            <ActiveEmbedJobs withHeader={true} />
+            <div className="flex items-center justify-between mb-4">
+              <StyledSectionHeader title="Processing Queue" className="!mb-0" />
+              <StyledButton
+                variant="danger"
+                size="md"
+                icon="IconTrash"
+                onClick={() => cleanupFailedMutation.mutate()}
+                loading={cleanupFailedMutation.isPending}
+                disabled={cleanupFailedMutation.isPending}
+              >
+                Clean Up Failed
+              </StyledButton>
+            </div>
+            <ActiveEmbedJobs withHeader={false} />
           </div>
 
           <div className="my-12">
@@ -218,8 +252,8 @@ export default function KnowledgeBaseModal({ aiAssistantName = "AI Assistant", o
                 size="md"
                 icon='IconRefresh'
                 onClick={handleConfirmSync}
-                disabled={syncMutation.isPending || uploadMutation.isPending}
-                loading={syncMutation.isPending || uploadMutation.isPending}
+                disabled={syncMutation.isPending || isUploading}
+                loading={syncMutation.isPending || isUploading}
               >
                 Sync Storage
               </StyledButton>
@@ -232,7 +266,7 @@ export default function KnowledgeBaseModal({ aiAssistantName = "AI Assistant", o
                   accessor: 'source',
                   title: 'File Name',
                   render(record) {
-                    return <span className="text-gray-700">{sourceToDisplayName(record.source)}</span>
+                    return <span className="text-text-primary">{sourceToDisplayName(record.source)}</span>
                   },
                 },
                 {
@@ -244,7 +278,7 @@ export default function KnowledgeBaseModal({ aiAssistantName = "AI Assistant", o
                     if (isConfirming) {
                       return (
                         <div className="flex items-center gap-2 justify-end">
-                          <span className="text-sm text-gray-600">Remove from knowledge base?</span>
+                          <span className="text-sm text-text-secondary">Remove from knowledge base?</span>
                           <StyledButton
                             variant='danger'
                             size='sm'
