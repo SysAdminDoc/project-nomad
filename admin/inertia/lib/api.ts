@@ -35,6 +35,11 @@ import {
   UpdateBuilderTagResponse,
 } from '../../types/benchmark'
 import type { FederatedSearchResponse } from '../../types/search'
+import type {
+  TranslationLanguage,
+  TranslationRequest,
+  TranslationResponse,
+} from '../../types/translation'
 
 class API {
   private client: AxiosInstance
@@ -77,6 +82,23 @@ class API {
     return catchInternal(async () => {
       const response = await this.client.get<{ configured: boolean; connected: boolean }>(
         '/ollama/remote-status'
+      )
+      return response.data
+    })()
+  }
+
+  async getTranslationLanguages(): Promise<TranslationLanguage[]> {
+    return catchInternal(async () => {
+      const response = await this.client.get<TranslationLanguage[]>('/translation/languages')
+      return response.data
+    })()
+  }
+
+  async translateText(request: TranslationRequest): Promise<TranslationResponse> {
+    return catchInternal(async () => {
+      const response = await this.client.post<TranslationResponse>(
+        '/translation/translate',
+        request
       )
       return response.data
     })()

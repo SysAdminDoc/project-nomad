@@ -2,14 +2,16 @@ import {
   IconArrowBigUpLines,
   IconChartBar,
   IconDashboard,
+  IconDatabase,
   IconFolder,
   IconGavel,
   IconHeart,
   IconMapRoute,
+  IconWorld,
   IconSettings,
   IconTerminal2,
   IconWand,
-  IconZoom
+  IconZoom,
 } from '@tabler/icons-react'
 import { usePage } from '@inertiajs/react'
 import StyledSidebar from '~/components/StyledSidebar'
@@ -22,13 +24,21 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   const aiAssistantInstallStatus = useServiceInstalledStatus(SERVICE_NAMES.OLLAMA)
 
   const navigation = [
-    ...(aiAssistantInstallStatus.isInstalled ? [{ name: aiAssistantName, href: '/settings/models', icon: IconWand, current: false }] : []),
+    ...(aiAssistantInstallStatus.isInstalled
+      ? [{ name: aiAssistantName, href: '/settings/models', icon: IconWand, current: false }]
+      : []),
     { name: 'Apps', href: '/settings/apps', icon: IconTerminal2, current: false },
     { name: 'Developer Caches', href: '/settings/caches', icon: IconDatabase, current: false },
     { name: 'Benchmark', href: '/settings/benchmark', icon: IconChartBar, current: false },
-    { name: 'Content Explorer', href: '/settings/zim/remote-explorer', icon: IconZoom, current: false },
+    {
+      name: 'Content Explorer',
+      href: '/settings/zim/remote-explorer',
+      icon: IconZoom,
+      current: false,
+    },
     { name: 'Content Manager', href: '/settings/zim', icon: IconFolder, current: false },
     { name: 'Maps Manager', href: '/settings/maps', icon: IconMapRoute, current: false },
+    { name: 'Offline Translation', href: '/settings/translation', icon: IconWorld, current: false },
     {
       name: 'Service Logs & Metrics',
       href: getServiceLink('9999'),

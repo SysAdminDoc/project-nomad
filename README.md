@@ -57,6 +57,7 @@ N.O.M.A.D. is a management UI ("Command Center") and API that orchestrates a col
 - **Easy Setup Wizard** — guided first-time configuration with curated content collections
 - **Developer Caches** — optional npm, PyPI, and Docker Hub pull-through caches for air-gapped development
 - **Local Voice Services** — optional Whisper.cpp speech-to-text and Piper text-to-speech containers
+- **Offline Translation** — optional local Argos Translate models for map labels and wiki text
 
 N.O.M.A.D. also includes built-in tools like a Wikipedia content selector, ZIM library manager, and content explorer.
 
@@ -70,6 +71,10 @@ test page on port `8401` and a Wyoming endpoint on port `8402`.
 Chat history is scoped to the browser that created it using an encrypted, opaque browser key.
 Use the **Private chat** toggle in the chat sidebar for conversations that should not be saved
 to history; private conversations remain only in the open tab.
+
+Offline Translation can be installed from **Settings → Apps**. It keeps selected Argos Translate
+language packs on the storage disk and provides translation panels in the map and content managers
+for text copied from offline maps and Kiwix articles.
 
 ## What's Included
 

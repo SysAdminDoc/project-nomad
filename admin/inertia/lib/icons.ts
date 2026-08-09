@@ -44,6 +44,7 @@ import {
   IconPlant,
   IconCode,
   IconMap,
+  IconLanguage,
 } from '@tabler/icons-react'
 
 /**
@@ -77,6 +78,7 @@ export const icons = {
   IconInfoCircle,
   IconLogs,
   IconMap,
+  IconLanguage,
   IconMenu2,
   IconMoon,
   IconNotes,
@@ -98,7 +100,7 @@ export const icons = {
   IconWand,
   IconWorld,
   IconX,
-  IconXboxX
+  IconXboxX,
 } as const
 
 export type DynamicIconName = keyof typeof icons

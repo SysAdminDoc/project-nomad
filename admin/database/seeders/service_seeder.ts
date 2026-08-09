@@ -5,6 +5,7 @@ import env from '#start/env'
 import { SERVICE_NAMES } from '../../constants/service_names.js'
 import { KIWIX_LIBRARY_CMD } from '../../constants/kiwix.js'
 import { getVoiceServiceDefinitions } from '../../app/utils/voice_services.js'
+import { getTranslationServiceDefinition } from '../../app/utils/translation_services.js'
 
 export default class ServiceSeeder extends BaseSeeder {
   // Use environment variable with fallback to production default
@@ -14,7 +15,12 @@ export default class ServiceSeeder extends BaseSeeder {
   )
   private static DEFAULT_SERVICES: (Omit<
     ModelAttributes<Service>,
-    'created_at' | 'updated_at' | 'metadata' | 'id' | 'available_update_version' | 'update_checked_at'
+    | 'created_at'
+    | 'updated_at'
+    | 'metadata'
+    | 'id'
+    | 'available_update_version'
+    | 'update_checked_at'
   > & { metadata?: string | null })[] = [
     {
       service_name: SERVICE_NAMES.KIWIX,
@@ -162,6 +168,7 @@ export default class ServiceSeeder extends BaseSeeder {
       depends_on: null,
     },
     ...getVoiceServiceDefinitions(ServiceSeeder.NOMAD_STORAGE_ABS_PATH),
+    getTranslationServiceDefinition(ServiceSeeder.NOMAD_STORAGE_ABS_PATH),
     {
       service_name: SERVICE_NAMES.NPM_CACHE,
       friendly_name: 'npm Package Cache',

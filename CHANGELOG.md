@@ -13,6 +13,7 @@ All notable changes to project-nomad will be documented in this file.
 - Added optional Whisper.cpp speech-to-text and Piper text-to-speech services with persistent models and voice data.
 - Added clickable ZIM page and section citations to RAG chat responses, with citations preserved in chat history.
 - Added browser-scoped chat history and a Private Chat mode that prevents persistence.
+- Added optional offline translation with persistent Argos Translate language packs and map/wiki translation panels.
 
 ## [v0.0.0] - %Y->- (HEAD -> main)
 

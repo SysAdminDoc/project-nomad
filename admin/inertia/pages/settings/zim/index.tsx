@@ -10,6 +10,7 @@ import useServiceInstalledStatus from '~/hooks/useServiceInstalledStatus'
 import Alert from '~/components/Alert'
 import { ZimFileWithMetadata } from '../../../../types/zim'
 import { SERVICE_NAMES } from '../../../../constants/service_names'
+import TranslationPanel from '~/components/TranslationPanel'
 
 export default function ZimPage() {
   const queryClient = useQueryClient()
@@ -48,7 +49,8 @@ export default function ZimPage() {
   }
 
   const deleteFileMutation = useMutation({
-    mutationFn: async (file: ZimFileWithMetadata) => api.deleteZimFile(file.name.replace('.zim', '')),
+    mutationFn: async (file: ZimFileWithMetadata) =>
+      api.deleteZimFile(file.name.replace('.zim', '')),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['zim-files'] })
     },
@@ -62,16 +64,14 @@ export default function ZimPage() {
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
               <h1 className="text-4xl font-semibold mb-2">Content Manager</h1>
-              <p className="text-text-muted">
-                Manage your stored content files.
-              </p>
+              <p className="text-text-muted">Manage your stored content files.</p>
             </div>
           </div>
           {!isInstalled && (
             <Alert
               title="The Kiwix application is not installed. Please install it to view downloaded ZIM files"
               type="warning"
-              variant='solid'
+              variant="solid"
               className="!mt-6"
             />
           )}
@@ -85,9 +85,7 @@ export default function ZimPage() {
                 accessor: 'title',
                 title: 'Title',
                 render: (record) => (
-                  <span className="font-medium">
-                    {record.title || record.name}
-                  </span>
+                  <span className="font-medium">{record.title || record.name}</span>
                 ),
               },
               {
@@ -119,6 +117,7 @@ export default function ZimPage() {
             ]}
             data={data || []}
           />
+          <TranslationPanel context="wikis" className="mt-8" />
         </main>
       </div>
     </SettingsLayout>

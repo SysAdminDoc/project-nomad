@@ -1,7 +1,7 @@
 import Service from '#models/service'
 import Docker from 'dockerode'
 import { randomBytes } from 'node:crypto'
-import { access, mkdir, writeFile } from 'node:fs/promises'
+import { access, mkdir, readdir, writeFile } from 'node:fs/promises'
 import logger from '@adonisjs/core/services/logger'
 import { inject } from '@adonisjs/core'
 import transmit from '@adonisjs/transmit/services/main'
@@ -16,6 +16,7 @@ import { promisify } from 'util'
 import KVStore from '#models/kv_store'
 import { BROADCAST_CHANNELS } from '../../constants/broadcast.js'
 import { KIWIX_LIBRARY_CMD } from '../../constants/kiwix.js'
+import { TRANSLATION_MODEL_LANGUAGES } from '../utils/translation_services.js'
 
 @inject()
 export class DockerService {
@@ -23,7 +24,10 @@ export class DockerService {
   private activeInstallations: Set<string> = new Set()
   public static NOMAD_NETWORK = 'project-nomad_default'
 
-  private _servicesStatusCache: { data: { service_name: string; status: string }[]; expiresAt: number } | null = null
+  private _servicesStatusCache: {
+    data: { service_name: string; status: string }[]
+    expiresAt: number
+  } | null = null
   private _servicesStatusInflight: Promise<{ service_name: string; status: string }[]> | null = null
 
   constructor() {
@@ -74,7 +78,9 @@ export class DockerService {
         if (serviceName === SERVICE_NAMES.KIWIX) {
           const isLegacy = await this.isKiwixOnLegacyConfig()
           if (isLegacy) {
-            logger.info('[DockerService] Kiwix on legacy glob config — running migration instead of restart.')
+            logger.info(
+              '[DockerService] Kiwix on legacy glob config — running migration instead of restart.'
+            )
             await this.migrateKiwixToLibraryMode()
             this.invalidateServicesStatusCache()
             return { success: true, message: 'Kiwix migrated to library mode successfully.' }
@@ -132,14 +138,16 @@ export class DockerService {
     }
     if (this._servicesStatusInflight) return this._servicesStatusInflight
 
-    this._servicesStatusInflight = this._fetchServicesStatus().then((data) => {
-      this._servicesStatusCache = { data, expiresAt: Date.now() + 5000 }
-      this._servicesStatusInflight = null
-      return data
-    }).catch((err) => {
-      this._servicesStatusInflight = null
-      throw err
-    })
+    this._servicesStatusInflight = this._fetchServicesStatus()
+      .then((data) => {
+        this._servicesStatusCache = { data, expiresAt: Date.now() + 5000 }
+        this._servicesStatusInflight = null
+        return data
+      })
+      .catch((err) => {
+        this._servicesStatusInflight = null
+        throw err
+      })
     return this._servicesStatusInflight
   }
 
@@ -495,6 +503,10 @@ export class DockerService {
         await this._prepareWhisperModel(service.container_image)
       }
 
+      if (service.service_name === SERVICE_NAMES.TRANSLATION) {
+        await this._prepareTranslationModels(service.container_image)
+      }
+
       if (service.service_name === SERVICE_NAMES.KIWIX) {
         await this._runPreinstallActions__KiwixServe()
         this._broadcast(
@@ -535,7 +547,9 @@ export class DockerService {
             'gpu-config',
             `AMD GPU detected. ROCm GPU acceleration is not yet supported in this version — proceeding with CPU-only configuration. GPU support for AMD will be available in a future update.`
           )
-          logger.warn('[DockerService] AMD GPU detected but ROCm support is not yet enabled. Using CPU-only configuration.')
+          logger.warn(
+            '[DockerService] AMD GPU detected but ROCm support is not yet enabled. Using CPU-only configuration.'
+          )
           // TODO: Re-enable AMD GPU support once ROCm image and device discovery are validated.
           // When re-enabling:
           //   1. Switch image to 'ollama/ollama:rocm'
@@ -624,11 +638,15 @@ export class DockerService {
 
       // If Ollama was just installed, trigger Nomad docs discovery and embedding
       if (service.service_name === SERVICE_NAMES.OLLAMA) {
-        logger.info('[DockerService] Ollama installation complete. Default behavior is to not enable chat suggestions.')
+        logger.info(
+          '[DockerService] Ollama installation complete. Default behavior is to not enable chat suggestions.'
+        )
         await KVStore.setValue('chat.suggestionsEnabled', false)
 
-        logger.info('[DockerService] Ollama installation complete. Triggering Nomad docs discovery...')
-        
+        logger.info(
+          '[DockerService] Ollama installation complete. Triggering Nomad docs discovery...'
+        )
+
         // Need to use dynamic imports here to avoid circular dependency
         const ollamaService = new (await import('./ollama_service.js')).OllamaService()
         const ragService = new (await import('./rag_service.js')).RagService(this, ollamaService)
@@ -668,11 +686,12 @@ export class DockerService {
     }
 
     await mkdir(cacheRoot, { recursive: true })
-    const cacheName = serviceName === SERVICE_NAMES.NPM_CACHE
-      ? 'npm'
-      : serviceName === SERVICE_NAMES.PYPI_CACHE
-        ? 'pypi'
-        : 'docker'
+    const cacheName =
+      serviceName === SERVICE_NAMES.NPM_CACHE
+        ? 'npm'
+        : serviceName === SERVICE_NAMES.PYPI_CACHE
+          ? 'pypi'
+          : 'docker'
     await mkdir(join(cacheRoot, cacheName), { recursive: true })
 
     if (serviceName === SERVICE_NAMES.DOCKER_CACHE) {
@@ -728,6 +747,40 @@ http:
       const result = await downloader.wait()
       if (result.StatusCode !== 0) {
         throw new Error(`Whisper.cpp model download exited with status ${result.StatusCode}`)
+      }
+    } finally {
+      await downloader.remove({ force: true }).catch(() => undefined)
+    }
+  }
+
+  private async _prepareTranslationModels(image: string): Promise<void> {
+    const storageRoot = process.env.NOMAD_STORAGE_PATH || '/opt/project-nomad/storage'
+    const modelDirectory = join(storageRoot, 'translation')
+    await mkdir(modelDirectory, { recursive: true })
+
+    const existingFiles = await readdir(modelDirectory).catch(() => [])
+    if (existingFiles.length > 0) return
+
+    this._broadcast(
+      SERVICE_NAMES.TRANSLATION,
+      'model-pulling',
+      'Downloading the initial offline translation models. This only happens during the first installation.'
+    )
+
+    const downloader = await this.docker.createContainer({
+      Image: image,
+      User: '0',
+      Cmd: ['--update-models', '--load-only', TRANSLATION_MODEL_LANGUAGES.join(',')],
+      HostConfig: {
+        Binds: [`${modelDirectory}:/home/libretranslate/.local`],
+      },
+    })
+
+    try {
+      await downloader.start()
+      const result = await downloader.wait()
+      if (result.StatusCode !== 0) {
+        throw new Error(`LibreTranslate model download exited with status ${result.StatusCode}`)
       }
     } finally {
       await downloader.remove({ force: true }).catch(() => undefined)
@@ -895,7 +948,11 @@ http:
       this._broadcast(SERVICE_NAMES.KIWIX, 'migrating', 'Migrating kiwix to library mode...')
       const kiwixLibraryService = new KiwixLibraryService()
       await kiwixLibraryService.rebuildFromDisk()
-      this._broadcast(SERVICE_NAMES.KIWIX, 'migrating', 'Built kiwix library XML from existing ZIM files.')
+      this._broadcast(
+        SERVICE_NAMES.KIWIX,
+        'migrating',
+        'Built kiwix library XML from existing ZIM files.'
+      )
 
       // Step 2: Stop and remove old container (leave ZIM volumes intact)
       const containers = await this.docker.listContainers({ all: true })
@@ -903,13 +960,17 @@ http:
       if (containerInfo) {
         const oldContainer = this.docker.getContainer(containerInfo.Id)
         if (containerInfo.State === 'running') {
-          await oldContainer.stop({ t: 10 }).catch((e: any) =>
-            logger.warn(`[DockerService] Kiwix stop warning during migration: ${e.message}`)
-          )
+          await oldContainer
+            .stop({ t: 10 })
+            .catch((e: any) =>
+              logger.warn(`[DockerService] Kiwix stop warning during migration: ${e.message}`)
+            )
         }
-        await oldContainer.remove({ force: true }).catch((e: any) =>
-          logger.warn(`[DockerService] Kiwix remove warning during migration: ${e.message}`)
-        )
+        await oldContainer
+          .remove({ force: true })
+          .catch((e: any) =>
+            logger.warn(`[DockerService] Kiwix remove warning during migration: ${e.message}`)
+          )
       }
 
       // Step 3: Read the service record and authoritatively set the correct command.
@@ -929,7 +990,11 @@ http:
 
       // Step 4: Recreate container directly (skipping _createContainer to avoid re-downloading
       // the bootstrap ZIM — ZIM files already exist on disk)
-      this._broadcast(SERVICE_NAMES.KIWIX, 'migrating', 'Recreating kiwix container with library mode config...')
+      this._broadcast(
+        SERVICE_NAMES.KIWIX,
+        'migrating',
+        'Recreating kiwix container with library mode config...'
+      )
       const newContainer = await this.docker.createContainer({
         Image: service.container_image,
         name: service.service_name,
@@ -952,7 +1017,11 @@ http:
       await service.save()
       this.activeInstallations.delete(SERVICE_NAMES.KIWIX)
 
-      this._broadcast(SERVICE_NAMES.KIWIX, 'migrated', 'Kiwix successfully migrated to library mode.')
+      this._broadcast(
+        SERVICE_NAMES.KIWIX,
+        'migrated',
+        'Kiwix successfully migrated to library mode.'
+      )
       logger.info('[DockerService] Kiwix migration to library mode complete.')
     } catch (error: any) {
       logger.error(`[DockerService] Kiwix migration failed: ${error.message}`)
@@ -966,7 +1035,10 @@ http:
    * Primary: Check Docker runtimes via docker.info() (works from inside containers).
    * Fallback: lspci for host-based installs and AMD detection.
    */
-  private async _detectGPUType(): Promise<{ type: 'nvidia' | 'amd' | 'none'; toolkitMissing?: boolean }> {
+  private async _detectGPUType(): Promise<{
+    type: 'nvidia' | 'amd' | 'none'
+    toolkitMissing?: boolean
+  }> {
     try {
       // Primary: Check Docker daemon for nvidia runtime (works from inside containers)
       try {
@@ -978,7 +1050,9 @@ http:
           return { type: 'nvidia' }
         }
       } catch (error: any) {
-        logger.warn(`[DockerService] Could not query Docker info for GPU runtimes: ${error.message}`)
+        logger.warn(
+          `[DockerService] Could not query Docker info for GPU runtimes: ${error.message}`
+        )
       }
 
       // Fallback: lspci for host-based installs (not available inside Docker)
@@ -991,7 +1065,9 @@ http:
         )
         if (nvidiaCheck.trim()) {
           // GPU hardware found but no nvidia runtime — toolkit not installed
-          logger.warn('[DockerService] NVIDIA GPU detected via lspci but NVIDIA Container Toolkit is not installed')
+          logger.warn(
+            '[DockerService] NVIDIA GPU detected via lspci but NVIDIA Container Toolkit is not installed'
+          )
           return { type: 'none', toolkitMissing: true }
         }
       } catch (error: any) {
@@ -1019,7 +1095,9 @@ http:
       try {
         const savedType = await KVStore.getValue('gpu.type')
         if (savedType === 'nvidia' || savedType === 'amd') {
-          logger.info(`[DockerService] No GPU detected live, but KV store has '${savedType}' from previous detection. Using saved value.`)
+          logger.info(
+            `[DockerService] No GPU detected live, but KV store has '${savedType}' from previous detection. Using saved value.`
+          )
           return { type: savedType as 'nvidia' | 'amd' }
         }
       } catch {
@@ -1116,7 +1194,10 @@ http:
         return { success: false, message: `Service ${serviceName} is not installed` }
       }
       if (this.activeInstallations.has(serviceName)) {
-        return { success: false, message: `Service ${serviceName} already has an operation in progress` }
+        return {
+          success: false,
+          message: `Service ${serviceName} already has an operation in progress`,
+        }
       }
 
       this.activeInstallations.add(serviceName)
@@ -1195,7 +1276,11 @@ http:
             `NVIDIA GPU detected but NVIDIA Container Toolkit is not installed. Using CPU-only configuration. Install the toolkit and reinstall AI Assistant for GPU acceleration: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html`
           )
         } else {
-          this._broadcast(serviceName, 'update-gpu-config', `No GPU detected. Using CPU-only configuration.`)
+          this._broadcast(
+            serviceName,
+            'update-gpu-config',
+            `No GPU detected. Using CPU-only configuration.`
+          )
         }
       }
 
@@ -1211,7 +1296,10 @@ http:
           Binds: hostConfig.Binds || undefined,
           PortBindings: hostConfig.PortBindings || undefined,
           RestartPolicy: hostConfig.RestartPolicy || undefined,
-          DeviceRequests: serviceName === SERVICE_NAMES.OLLAMA ? updatedDeviceRequests : (hostConfig.DeviceRequests || undefined),
+          DeviceRequests:
+            serviceName === SERVICE_NAMES.OLLAMA
+              ? updatedDeviceRequests
+              : hostConfig.DeviceRequests || undefined,
           Devices: hostConfig.Devices || undefined,
         },
         NetworkingConfig: inspectData.NetworkSettings?.Networks
@@ -1235,12 +1323,23 @@ http:
         newContainer = await this.docker.createContainer(newContainerConfig)
       } catch (createError: any) {
         // Rollback: rename old container back
-        this._broadcast(serviceName, 'update-rollback', `Failed to create new container: ${createError.message}. Rolling back...`)
-        const rollbackContainer = this.docker.getContainer((await this.docker.listContainers({ all: true })).find((c) => c.Names.includes(`/${oldName}`))!.Id)
+        this._broadcast(
+          serviceName,
+          'update-rollback',
+          `Failed to create new container: ${createError.message}. Rolling back...`
+        )
+        const rollbackContainer = this.docker.getContainer(
+          (await this.docker.listContainers({ all: true })).find((c) =>
+            c.Names.includes(`/${oldName}`)
+          )!.Id
+        )
         await rollbackContainer.rename({ name: serviceName })
         await rollbackContainer.start()
         this.activeInstallations.delete(serviceName)
-        return { success: false, message: `Failed to create updated container: ${createError.message}` }
+        return {
+          success: false,
+          message: `Failed to create updated container: ${createError.message}`,
+        }
       }
 
       // Step 5: Start new container
@@ -1308,11 +1407,7 @@ http:
       }
     } catch (error: any) {
       this.activeInstallations.delete(serviceName)
-      this._broadcast(
-        serviceName,
-        'update-rollback',
-        `Update failed: ${error.message}`
-      )
+      this._broadcast(serviceName, 'update-rollback', `Update failed: ${error.message}`)
       logger.error(`[DockerService] Update failed for ${serviceName}: ${error.message}`)
       return { success: false, message: `Update failed: ${error.message}` }
     }

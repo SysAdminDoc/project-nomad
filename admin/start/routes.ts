@@ -20,6 +20,7 @@ import SettingsController from '#controllers/settings_controller'
 import SystemController from '#controllers/system_controller'
 import CollectionUpdatesController from '#controllers/collection_updates_controller'
 import ZimController from '#controllers/zim_controller'
+import TranslationController from '#controllers/translation_controller'
 import router from '@adonisjs/core/services/router'
 import transmit from '@adonisjs/transmit/services/main'
 
@@ -51,6 +52,7 @@ router
     router.get('/system', [SettingsController, 'system'])
     router.get('/apps', [SettingsController, 'apps'])
     router.get('/caches', [SettingsController, 'caches'])
+    router.get('/translation', [SettingsController, 'translation'])
     router.get('/legal', [SettingsController, 'legal'])
     router.get('/maps', [SettingsController, 'maps'])
     router.get('/models', [SettingsController, 'models'])
@@ -112,6 +114,13 @@ router.get('/api/health', () => {
 })
 
 router.get('/api/search', [SearchController, 'index'])
+
+router
+  .group(() => {
+    router.get('/languages', [TranslationController, 'languages'])
+    router.post('/translate', [TranslationController, 'translate'])
+  })
+  .prefix('/api/translation')
 
 router
   .group(() => {

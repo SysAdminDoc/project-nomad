@@ -25,11 +25,18 @@ export default function Maps(props: {
             <IconArrowLeft className="mr-2" size={24} />
             <p className="text-lg text-text-secondary">Back to Home</p>
           </Link>
-          <Link href="/settings/maps" className='mr-4'>
-            <StyledButton variant="primary" icon="IconSettings">
-              Manage Map Regions
-            </StyledButton>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/settings/translation">
+              <StyledButton variant="secondary" icon="IconWorld">
+                Translate Map Text
+              </StyledButton>
+            </Link>
+            <Link href="/settings/maps" className="mr-4">
+              <StyledButton variant="primary" icon="IconSettings">
+                Manage Map Regions
+              </StyledButton>
+            </Link>
+          </div>
         </div>
         {alertMessage && (
           <div className="absolute top-20 left-4 right-4 z-50">

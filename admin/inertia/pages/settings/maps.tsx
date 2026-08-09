@@ -17,6 +17,7 @@ import type { CollectionWithStatus } from '../../../types/collections'
 import ActiveDownloads from '~/components/ActiveDownloads'
 import Alert from '~/components/Alert'
 import { formatBytes } from '~/lib/util'
+import TranslationPanel from '~/components/TranslationPanel'
 
 const CURATED_COLLECTIONS_KEY = 'curated-map-collections'
 const GLOBAL_MAP_INFO_KEY = 'global-map-info'
@@ -52,7 +53,8 @@ export default function MapsManager(props: {
       invalidateDownloads()
       addNotification({
         type: 'success',
-        message: 'Global map download has been queued. This is a large file (~125 GB) and may take a while.',
+        message:
+          'Global map download has been queued. This is a large file (~125 GB) and may take a while.',
       })
       closeAllModals()
     },
@@ -187,9 +189,9 @@ export default function MapsManager(props: {
         confirmLoading={downloadGlobalMap.isPending}
       >
         <p className="text-text-secondary">
-          This will download the full Protomaps global map ({formatBytes(globalMapInfo.size, 1)}, build {globalMapInfo.date}).
-          Covers the entire planet so you won't need individual region files.
-          Make sure you have enough disk space.
+          This will download the full Protomaps global map ({formatBytes(globalMapInfo.size, 1)},
+          build {globalMapInfo.date}). Covers the entire planet so you won't need individual region
+          files. Make sure you have enough disk space.
         </p>
       </StyledModal>,
       'confirm-global-map-download-modal'
@@ -230,11 +232,11 @@ export default function MapsManager(props: {
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
               <h1 className="text-4xl font-semibold mb-2">Maps Manager</h1>
-              <p className="text-text-muted">Manage your stored map files and explore new regions!</p>
+              <p className="text-text-muted">
+                Manage your stored map files and explore new regions!
+              </p>
             </div>
-            <div className="flex space-x-4">
-
-            </div>
+            <div className="flex space-x-4"></div>
           </div>
           {!props.maps.baseAssetsExist && (
             <Alert
@@ -329,6 +331,7 @@ export default function MapsManager(props: {
             data={props.maps.regionFiles || []}
           />
           <ActiveDownloads filetype="map" withHeader />
+          <TranslationPanel context="maps" className="mt-8" />
         </main>
       </div>
     </SettingsLayout>

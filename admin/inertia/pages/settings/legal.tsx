@@ -68,6 +68,11 @@ export default function LegalPage() {
                 <br />
                 <a href="https://github.com/qdrant/qdrant" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">https://github.com/qdrant/qdrant</a>
               </li>
+              <li>
+                <strong>LibreTranslate / Argos Translate</strong> - Optional local machine translation service (AGPL-3.0 / MIT Licenses)
+                <br />
+                <a href="https://github.com/LibreTranslate/LibreTranslate" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">https://github.com/LibreTranslate/LibreTranslate</a>
+              </li>
             </ul>
           </section>
 
