@@ -224,7 +224,8 @@ export class SystemService {
         'powered_by',
         'display_order',
         'container_image',
-        'available_update_version'
+        'available_update_version',
+        'metadata'
       )
       .where('is_dependency_service', false)
     if (installedOnly) {
@@ -254,6 +255,7 @@ export class SystemService {
         display_order: service.display_order,
         container_image: service.container_image,
         available_update_version: service.available_update_version,
+        metadata: service.metadata,
       })
     }
 

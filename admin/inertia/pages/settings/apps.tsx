@@ -24,6 +24,17 @@ function extractTag(containerImage: string): string {
   return parts.length > 1 ? parts[parts.length - 1] : 'latest'
 }
 
+function parseServiceMetadata(metadata: string | null | undefined): Record<string, string> | null {
+  if (!metadata) return null
+
+  try {
+    const parsed = JSON.parse(metadata)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 export default function SettingsPage(props: { system: { services: ServiceSlim[] } }) {
   const { openModal, closeAllModals } = useModals()
   const { showError } = useErrorNotification()
@@ -361,10 +372,17 @@ export default function SettingsPage(props: { system: { services: ServiceSlim[] 
                   accessor: 'friendly_name',
                   title: 'Name',
                   render(record) {
+                    const metadata = parseServiceMetadata(record.metadata)
+                    const endpoint = metadata?.web_endpoint || metadata?.endpoint
                     return (
                       <div className="flex flex-col">
                         <p>{record.friendly_name || record.service_name}</p>
                         <p className="text-sm text-text-muted">{record.description}</p>
+                        {metadata?.protocol && endpoint && (
+                          <p className="text-xs text-text-muted">
+                            {metadata.protocol} endpoint: {endpoint}
+                          </p>
+                        )}
                       </div>
                     )
                   },

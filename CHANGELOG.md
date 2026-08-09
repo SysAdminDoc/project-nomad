@@ -10,6 +10,7 @@ All notable changes to project-nomad will be documented in this file.
 - Added Medical, Homestead, Maker, K-12, and HAM Radio starter packs to Easy Setup.
 - Added optional persistent npm, PyPI, and Docker Hub pull-through caches for offline development.
 - Added hardware-aware Ollama model recommendations for Raspberry Pi 5, Jetson, and x86 NVIDIA systems.
+- Added optional Whisper.cpp speech-to-text and Piper text-to-speech services with persistent models and voice data.
 
 ## [v0.0.0] - %Y->- (HEAD -> main)
 

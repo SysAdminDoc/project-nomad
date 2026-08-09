@@ -50,11 +50,16 @@ N.O.M.A.D. is a management UI ("Command Center") and API that orchestrates a col
 - **System Benchmark** — hardware scoring with a [community leaderboard](https://benchmark.projectnomad.us)
 - **Easy Setup Wizard** — guided first-time configuration with curated content collections
 - **Developer Caches** — optional npm, PyPI, and Docker Hub pull-through caches for air-gapped development
+- **Local Voice Services** — optional Whisper.cpp speech-to-text and Piper text-to-speech containers
 
 N.O.M.A.D. also includes built-in tools like a Wikipedia content selector, ZIM library manager, and content explorer.
 
 Developer caches can be installed from **Settings → Developer Caches**. They fill on demand while
 online and keep fetched packages or images on the N.O.M.A.D. storage disk for later offline use.
+
+Whisper.cpp and Piper can be installed from **Settings → Apps** when local voice services are
+needed. Whisper provides an HTTP transcription server on port `8400`; Piper provides a browser
+test page on port `8401` and a Wyoming endpoint on port `8402`.
 
 ## What's Included
 

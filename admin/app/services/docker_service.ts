@@ -1,7 +1,7 @@
 import Service from '#models/service'
 import Docker from 'dockerode'
 import { randomBytes } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { access, mkdir, writeFile } from 'node:fs/promises'
 import logger from '@adonisjs/core/services/logger'
 import { inject } from '@adonisjs/core'
 import transmit from '@adonisjs/transmit/services/main'
@@ -491,6 +491,10 @@ export class DockerService {
         await new Promise((res) => this.docker.modem.followProgress(pullStream, res))
       }
 
+      if (service.service_name === SERVICE_NAMES.WHISPER) {
+        await this._prepareWhisperModel(service.container_image)
+      }
+
       if (service.service_name === SERVICE_NAMES.KIWIX) {
         await this._runPreinstallActions__KiwixServe()
         this._broadcast(
@@ -580,7 +584,14 @@ export class DockerService {
         ...(containerConfig?.WorkingDir && { WorkingDir: containerConfig.WorkingDir }),
         ...(containerConfig?.ExposedPorts && { ExposedPorts: containerConfig.ExposedPorts }),
         Env: [...(containerConfig?.Env ?? []), ...ollamaEnv, ...developerCacheEnv],
-        ...(service.container_command ? { Cmd: service.container_command.split(' ') } : {}),
+        ...(service.container_command
+          ? {
+              Cmd:
+                service.service_name === SERVICE_NAMES.WHISPER
+                  ? [service.container_command]
+                  : service.container_command.split(' '),
+            }
+          : {}),
         // Ensure container is attached to the Nomad docker network in production
         ...(process.env.NODE_ENV === 'production' && {
           NetworkingConfig: {
@@ -681,6 +692,45 @@ http:
 `,
         'utf8'
       )
+    }
+  }
+
+  private async _prepareWhisperModel(image: string): Promise<void> {
+    const storageRoot = process.env.NOMAD_STORAGE_PATH || '/opt/project-nomad/storage'
+    const modelDirectory = join(storageRoot, 'whisper')
+    const modelPath = join(modelDirectory, 'ggml-base.en.bin')
+
+    await mkdir(modelDirectory, { recursive: true })
+
+    try {
+      await access(modelPath)
+      return
+    } catch {
+      // The model is downloaded below on first installation.
+    }
+
+    this._broadcast(
+      SERVICE_NAMES.WHISPER,
+      'model-pulling',
+      'Downloading the Whisper.cpp base.en model. This only happens during the first installation.'
+    )
+
+    const downloader = await this.docker.createContainer({
+      Image: image,
+      Cmd: ['./models/download-ggml-model.sh base.en /models'],
+      HostConfig: {
+        Binds: [`${modelDirectory}:/models`],
+      },
+    })
+
+    try {
+      await downloader.start()
+      const result = await downloader.wait()
+      if (result.StatusCode !== 0) {
+        throw new Error(`Whisper.cpp model download exited with status ${result.StatusCode}`)
+      }
+    } finally {
+      await downloader.remove({ force: true }).catch(() => undefined)
     }
   }
 
