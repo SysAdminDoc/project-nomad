@@ -10,6 +10,7 @@ import { catchInternal } from './util'
 import { NomadChatResponse, NomadInstalledModel, NomadOllamaModel, OllamaChatRequest } from '../../types/ollama'
 import BenchmarkResult from '#models/benchmark_result'
 import { BenchmarkType, RunBenchmarkResponse, SubmitBenchmarkResponse, UpdateBuilderTagResponse } from '../../types/benchmark'
+import type { FederatedSearchResponse } from '../../types/search'
 
 class API {
   private client: AxiosInstance
@@ -497,6 +498,15 @@ class API {
     return catchInternal(async () => {
       const response = await this.client.get<{ status: string }>('/health', {
         timeout: 5000,
+      })
+      return response.data
+    })()
+  }
+
+  async search(query: string, limit = 20): Promise<FederatedSearchResponse | undefined> {
+    return catchInternal(async () => {
+      const response = await this.client.get<FederatedSearchResponse>('/search', {
+        params: { q: query, limit },
       })
       return response.data
     })()

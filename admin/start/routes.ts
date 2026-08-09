@@ -15,6 +15,7 @@ import HomeController from '#controllers/home_controller'
 import MapsController from '#controllers/maps_controller'
 import OllamaController from '#controllers/ollama_controller'
 import RagController from '#controllers/rag_controller'
+import SearchController from '#controllers/search_controller'
 import SettingsController from '#controllers/settings_controller'
 import SystemController from '#controllers/system_controller'
 import CollectionUpdatesController from '#controllers/collection_updates_controller'
@@ -106,6 +107,8 @@ router
 router.get('/api/health', () => {
   return { status: 'ok' }
 })
+
+router.get('/api/search', [SearchController, 'index'])
 
 router
   .group(() => {
