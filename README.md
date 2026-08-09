@@ -49,8 +49,12 @@ N.O.M.A.D. is a management UI ("Command Center") and API that orchestrates a col
 - **Notes** — local note-taking via [FlatNotes](https://github.com/dullage/flatnotes)
 - **System Benchmark** — hardware scoring with a [community leaderboard](https://benchmark.projectnomad.us)
 - **Easy Setup Wizard** — guided first-time configuration with curated content collections
+- **Developer Caches** — optional npm, PyPI, and Docker Hub pull-through caches for air-gapped development
 
 N.O.M.A.D. also includes built-in tools like a Wikipedia content selector, ZIM library manager, and content explorer.
+
+Developer caches can be installed from **Settings → Developer Caches**. They fill on demand while
+online and keep fetched packages or images on the N.O.M.A.D. storage disk for later offline use.
 
 ## What's Included
 

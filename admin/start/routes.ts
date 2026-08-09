@@ -50,6 +50,7 @@ router
   .group(() => {
     router.get('/system', [SettingsController, 'system'])
     router.get('/apps', [SettingsController, 'apps'])
+    router.get('/caches', [SettingsController, 'caches'])
     router.get('/legal', [SettingsController, 'legal'])
     router.get('/maps', [SettingsController, 'maps'])
     router.get('/models', [SettingsController, 'models'])

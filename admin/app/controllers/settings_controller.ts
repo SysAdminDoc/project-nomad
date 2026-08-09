@@ -2,6 +2,7 @@ import KVStore from '#models/kv_store'
 import { BenchmarkService } from '#services/benchmark_service'
 import { MapService } from '#services/map_service'
 import { OllamaService } from '#services/ollama_service'
+import { DeveloperCacheService } from '#services/developer_cache_service'
 import { SystemService } from '#services/system_service'
 import { getSettingSchema, updateSettingSchema } from '#validators/settings'
 import { inject } from '@adonisjs/core'
@@ -13,7 +14,8 @@ export default class SettingsController {
     private systemService: SystemService,
     private mapService: MapService,
     private benchmarkService: BenchmarkService,
-    private ollamaService: OllamaService
+    private ollamaService: OllamaService,
+    private developerCacheService: DeveloperCacheService
   ) {}
 
   async system({ inertia }: HttpContext) {
@@ -32,6 +34,11 @@ export default class SettingsController {
         services,
       },
     })
+  }
+
+  async caches({ inertia }: HttpContext) {
+    const caches = await this.developerCacheService.list()
+    return inertia.render('settings/caches', { caches })
   }
 
   async legal({ inertia }: HttpContext) {

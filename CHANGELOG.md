@@ -8,6 +8,7 @@ All notable changes to project-nomad will be documented in this file.
 - Added BM25 lexical retrieval and dense-vector score fusion for ZIM article chunks indexed in Qdrant.
 - Added scheduled Kiwix catalog update checks and one-click in-place ZIM refreshes from the Content Explorer.
 - Added Medical, Homestead, Maker, K-12, and HAM Radio starter packs to Easy Setup.
+- Added optional persistent npm, PyPI, and Docker Hub pull-through caches for offline development.
 
 ## [v0.0.0] - %Y->- (HEAD -> main)
 

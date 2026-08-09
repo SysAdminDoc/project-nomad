@@ -1,5 +1,7 @@
 import Service from '#models/service'
 import Docker from 'dockerode'
+import { randomBytes } from 'node:crypto'
+import { mkdir, writeFile } from 'node:fs/promises'
 import logger from '@adonisjs/core/services/logger'
 import { inject } from '@adonisjs/core'
 import transmit from '@adonisjs/transmit/services/main'
@@ -432,6 +434,7 @@ export class DockerService {
     containerConfig: any
   ): Promise<void> {
     try {
+      await this._prepareDeveloperCache(service.service_name)
       this._broadcast(service.service_name, 'initializing', '')
 
       let dependencies = []
@@ -557,6 +560,8 @@ export class DockerService {
         }
       }
 
+      const developerCacheEnv = await this._getDeveloperCacheEnv(service.service_name)
+
       this._broadcast(
         service.service_name,
         'creating',
@@ -574,7 +579,7 @@ export class DockerService {
         HostConfig: gpuHostConfig,
         ...(containerConfig?.WorkingDir && { WorkingDir: containerConfig.WorkingDir }),
         ...(containerConfig?.ExposedPorts && { ExposedPorts: containerConfig.ExposedPorts }),
-        Env: [...(containerConfig?.Env ?? []), ...ollamaEnv],
+        Env: [...(containerConfig?.Env ?? []), ...ollamaEnv, ...developerCacheEnv],
         ...(service.container_command ? { Cmd: service.container_command.split(' ') } : {}),
         // Ensure container is attached to the Nomad docker network in production
         ...(process.env.NODE_ENV === 'production' && {
@@ -637,6 +642,58 @@ export class DockerService {
       await this._cleanupFailedInstallation(service.service_name)
       throw new Error(`Failed to install service ${service.service_name}: ${error.message}`)
     }
+  }
+
+  private async _prepareDeveloperCache(serviceName: string): Promise<void> {
+    const storageRoot = process.env.NOMAD_STORAGE_PATH || '/opt/project-nomad/storage'
+    const cacheRoot = join(storageRoot, 'caches')
+
+    if (
+      serviceName !== SERVICE_NAMES.NPM_CACHE &&
+      serviceName !== SERVICE_NAMES.PYPI_CACHE &&
+      serviceName !== SERVICE_NAMES.DOCKER_CACHE
+    ) {
+      return
+    }
+
+    await mkdir(cacheRoot, { recursive: true })
+    const cacheName = serviceName === SERVICE_NAMES.NPM_CACHE
+      ? 'npm'
+      : serviceName === SERVICE_NAMES.PYPI_CACHE
+        ? 'pypi'
+        : 'docker'
+    await mkdir(join(cacheRoot, cacheName), { recursive: true })
+
+    if (serviceName === SERVICE_NAMES.DOCKER_CACHE) {
+      await writeFile(
+        join(cacheRoot, 'docker', 'config.yml'),
+        `version: 0.1
+storage:
+  delete:
+    enabled: true
+  filesystem:
+    rootdirectory: /var/lib/registry
+  proxy:
+    remoteurl: https://registry-1.docker.io
+    ttl: 168h
+http:
+  addr: :5000
+`,
+        'utf8'
+      )
+    }
+  }
+
+  private async _getDeveloperCacheEnv(serviceName: string): Promise<string[]> {
+    if (serviceName !== SERVICE_NAMES.PYPI_CACHE) return []
+
+    let password = await KVStore.getValue('cache.devpiPassword')
+    if (!password) {
+      password = randomBytes(24).toString('base64url')
+      await KVStore.setValue('cache.devpiPassword', password)
+    }
+
+    return [`DEVPI_PASSWORD=${password}`]
   }
 
   async _checkIfServiceContainerExists(serviceName: string): Promise<boolean> {
