@@ -15,6 +15,9 @@ export default class ChatSession extends BaseModel {
   @column()
   declare model: string | null
 
+  @column()
+  declare owner_key: string | null
+
   @hasMany(() => ChatMessage, {
     foreignKey: 'session_id',
     localKey: 'id',

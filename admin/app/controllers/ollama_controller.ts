@@ -15,6 +15,7 @@ import {
 } from '../../constants/ollama.js'
 import { SERVICE_NAMES } from '../../constants/service_names.js'
 import { buildRagCitations } from '../utils/rag_citations.js'
+import { ensureChatOwnerKey } from '../utils/chat_privacy.js'
 import type { RAGCitation } from '../../types/rag.js'
 import logger from '@adonisjs/core/services/logger'
 type Message = { role: 'system' | 'user' | 'assistant'; content: string }
@@ -41,6 +42,7 @@ export default class OllamaController {
 
   async chat({ request, response }: HttpContext) {
     const reqData = await request.validateUsing(chatSchema)
+    const ownerKey = ensureChatOwnerKey(request, response)
 
     // Flush SSE headers immediately so the client connection is open while
     // pre-processing (query rewriting, RAG lookup) runs in the background.
@@ -162,7 +164,7 @@ export default class OllamaController {
         const lastUserMsg = [...reqData.messages].reverse().find((m) => m.role === 'user')
         if (lastUserMsg) {
           userContent = lastUserMsg.content
-          await this.chatService.addMessage(sessionId, 'user', userContent)
+          await this.chatService.addMessage(sessionId, ownerKey, 'user', userContent)
         }
       }
 
@@ -188,16 +190,18 @@ export default class OllamaController {
 
         // Save assistant message and optionally generate title
         if (sessionId && fullContent) {
-          await this.chatService.addMessage(sessionId, 'assistant', fullContent, {
+          await this.chatService.addMessage(sessionId, ownerKey, 'assistant', fullContent, {
             citations: ragCitations,
           })
-          const messageCount = await this.chatService.getMessageCount(sessionId)
+          const messageCount = await this.chatService.getMessageCount(sessionId, ownerKey)
           if (messageCount <= 2 && userContent) {
-            this.chatService.generateTitle(sessionId, userContent, fullContent).catch((err) => {
-              logger.error(
-                `[OllamaController] Title generation failed: ${err instanceof Error ? err.message : err}`
-              )
-            })
+            this.chatService
+              .generateTitle(sessionId, ownerKey, userContent, fullContent)
+              .catch((err) => {
+                logger.error(
+                  `[OllamaController] Title generation failed: ${err instanceof Error ? err.message : err}`
+                )
+              })
           }
         }
         return
@@ -207,13 +211,19 @@ export default class OllamaController {
       const result = await this.ollamaService.chat({ ...ollamaRequest, think, numCtx })
 
       if (sessionId && result?.message?.content) {
-        await this.chatService.addMessage(sessionId, 'assistant', result.message.content, {
-          citations: ragCitations,
-        })
-        const messageCount = await this.chatService.getMessageCount(sessionId)
+        await this.chatService.addMessage(
+          sessionId,
+          ownerKey,
+          'assistant',
+          result.message.content,
+          {
+            citations: ragCitations,
+          }
+        )
+        const messageCount = await this.chatService.getMessageCount(sessionId, ownerKey)
         if (messageCount <= 2 && userContent) {
           this.chatService
-            .generateTitle(sessionId, userContent, result.message.content)
+            .generateTitle(sessionId, ownerKey, userContent, result.message.content)
             .catch((err) => {
               logger.error(
                 `[OllamaController] Title generation failed: ${err instanceof Error ? err.message : err}`
@@ -348,7 +358,7 @@ export default class OllamaController {
   private getContextLimitsForModel(modelName: string): { maxResults: number; maxTokens: number } {
     // Extract parameter count from model name (e.g., "llama3.2:3b", "qwen2.5:1.5b", "gemma:7b")
     const sizeMatch = modelName.match(/(\d+\.?\d*)[bB]/)
-    const paramBillions = sizeMatch ? parseFloat(sizeMatch[1]) : 8 // default to 8B if unknown
+    const paramBillions = sizeMatch ? Number.parseFloat(sizeMatch[1]) : 8 // default to 8B if unknown
 
     for (const tier of RAG_CONTEXT_LIMITS) {
       if (paramBillions <= tier.maxParams) {

@@ -12,6 +12,8 @@ import { IconX } from '@tabler/icons-react'
 import { DEFAULT_QUERY_REWRITE_MODEL } from '../../../constants/ollama'
 import { useSystemSetting } from '~/hooks/useSystemSetting'
 
+const CHAT_PRIVACY_STORAGE_KEY = 'nomad:chat-private'
+
 interface ChatProps {
   enabled: boolean
   isInModal?: boolean
@@ -32,6 +34,10 @@ export default function Chat({
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
+  const [privacyMode, setPrivacyMode] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem(CHAT_PRIVACY_STORAGE_KEY) === 'true'
+  })
   const [isStreamingResponse, setIsStreamingResponse] = useState(false)
   const streamAbortRef = useRef<AbortController | null>(null)
 
@@ -39,7 +45,7 @@ export default function Chat({
   const { data: sessions = [] } = useQuery({
     queryKey: ['chatSessions'],
     queryFn: () => api.getChatSessions(),
-    enabled,
+    enabled: enabled && !privacyMode,
     select: (data) =>
       data?.map((s) => ({
         id: s.id,
@@ -101,7 +107,7 @@ export default function Chat({
       sessionId?: number
     }) => api.sendChatMessage({ ...request, stream: false }),
     onSuccess: async (data) => {
-      if (!data || !activeSessionId) {
+      if (!data) {
         throw new Error('No response from Ollama')
       }
 
@@ -116,9 +122,11 @@ export default function Chat({
 
       setMessages((prev) => [...prev, assistantMessage])
 
-      // Refresh sessions to pick up backend-persisted messages and title
-      queryClient.invalidateQueries({ queryKey: ['chatSessions'] })
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: ['chatSessions'] }), 3000)
+      if (activeSessionId && !privacyMode) {
+        // Refresh sessions to pick up backend-persisted messages and title
+        queryClient.invalidateQueries({ queryKey: ['chatSessions'] })
+        setTimeout(() => queryClient.invalidateQueries({ queryKey: ['chatSessions'] }), 3000)
+      }
     },
     onError: (error) => {
       console.error('Error sending message:', error)
@@ -157,6 +165,23 @@ export default function Chat({
     setMessages([])
   }, [])
 
+  const handlePrivacyToggle = useCallback(
+    (enabled: boolean) => {
+      setPrivacyMode(enabled)
+      setActiveSessionId(null)
+      setMessages([])
+      if (enabled) {
+        queryClient.cancelQueries({ queryKey: ['chatSessions'] })
+        queryClient.removeQueries({ queryKey: ['chatSessions'] })
+      }
+    },
+    [queryClient]
+  )
+
+  useEffect(() => {
+    window.localStorage.setItem(CHAT_PRIVACY_STORAGE_KEY, String(privacyMode))
+  }, [privacyMode])
+
   const handleClearHistory = useCallback(() => {
     openModal(
       <StyledModal
@@ -179,6 +204,8 @@ export default function Chat({
 
   const handleSessionSelect = useCallback(
     async (sessionId: string) => {
+      if (privacyMode) return
+
       // Cancel any ongoing suggestions fetch
       queryClient.cancelQueries({ queryKey: ['chatSuggestions'] })
 
@@ -204,7 +231,7 @@ export default function Chat({
         setSelectedModel(sessionData.model)
       }
     },
-    [installedModels, queryClient]
+    [privacyMode, queryClient]
   )
 
   const handleSendMessage = useCallback(
@@ -212,7 +239,7 @@ export default function Chat({
       let sessionId = activeSessionId
 
       // Create a new session if none exists
-      if (!sessionId) {
+      if (!sessionId && !privacyMode) {
         const newSession = await api.createChatSession('New Chat', selectedModel)
         if (newSession) {
           sessionId = newSession.id
@@ -336,15 +363,17 @@ export default function Chat({
           streamAbortRef.current = null
         }
 
-        if (fullContent && sessionId) {
+        if (fullContent) {
           // Ensure the streaming cursor is removed
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantMsgId ? { ...m, isStreaming: false } : m))
           )
 
-          // Refresh sessions to pick up backend-persisted messages and title
-          queryClient.invalidateQueries({ queryKey: ['chatSessions'] })
-          setTimeout(() => queryClient.invalidateQueries({ queryKey: ['chatSessions'] }), 3000)
+          if (sessionId && !privacyMode) {
+            // Refresh sessions to pick up backend-persisted messages and title
+            queryClient.invalidateQueries({ queryKey: ['chatSessions'] })
+            setTimeout(() => queryClient.invalidateQueries({ queryKey: ['chatSessions'] }), 3000)
+          }
         }
       } else {
         // Non-streaming (legacy) path
@@ -355,7 +384,15 @@ export default function Chat({
         })
       }
     },
-    [activeSessionId, messages, selectedModel, chatMutation, queryClient, streamingEnabled]
+    [
+      activeSessionId,
+      messages,
+      selectedModel,
+      chatMutation,
+      queryClient,
+      streamingEnabled,
+      privacyMode,
+    ]
   )
 
   return (
@@ -366,11 +403,13 @@ export default function Chat({
       )}
     >
       <ChatSidebar
-        sessions={sessions}
+        sessions={privacyMode ? [] : sessions}
         activeSessionId={activeSessionId}
         onSessionSelect={handleSessionSelect}
         onNewChat={handleNewChat}
         onClearHistory={handleClearHistory}
+        privacyMode={privacyMode}
+        onPrivacyToggle={handlePrivacyToggle}
         isInModal={isInModal}
       />
       <div className="flex-1 flex flex-col min-h-0">

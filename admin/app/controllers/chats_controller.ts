@@ -5,17 +5,23 @@ import { createSessionSchema, updateSessionSchema, addMessageSchema } from '#val
 import KVStore from '#models/kv_store'
 import { SystemService } from '#services/system_service'
 import { SERVICE_NAMES } from '../../constants/service_names.js'
+import { ensureChatOwnerKey } from '../utils/chat_privacy.js'
 
 @inject()
 export default class ChatsController {
-  constructor(private chatService: ChatService, private systemService: SystemService) {}
+  constructor(
+    private chatService: ChatService,
+    private systemService: SystemService
+  ) {}
 
   async inertia({ inertia, response }: HttpContext) {
-    const aiAssistantInstalled = await this.systemService.checkServiceInstalled(SERVICE_NAMES.OLLAMA)
+    const aiAssistantInstalled = await this.systemService.checkServiceInstalled(
+      SERVICE_NAMES.OLLAMA
+    )
     if (!aiAssistantInstalled) {
       return response.status(404).json({ error: 'AI Assistant service not installed' })
     }
-    
+
     const chatSuggestionsEnabled = await KVStore.getValue('chat.suggestionsEnabled')
     return inertia.render('chat', {
       settings: {
@@ -24,13 +30,15 @@ export default class ChatsController {
     })
   }
 
-  async index({}: HttpContext) {
-    return await this.chatService.getAllSessions()
+  async index({ request, response }: HttpContext) {
+    const ownerKey = ensureChatOwnerKey(request, response)
+    return await this.chatService.getAllSessions(ownerKey)
   }
 
-  async show({ params, response }: HttpContext) {
-    const sessionId = parseInt(params.id)
-    const session = await this.chatService.getSession(sessionId)
+  async show({ params, request, response }: HttpContext) {
+    const sessionId = Number.parseInt(params.id)
+    const ownerKey = ensureChatOwnerKey(request, response)
+    const session = await this.chatService.getSession(sessionId, ownerKey)
 
     if (!session) {
       return response.status(404).json({ error: 'Session not found' })
@@ -42,7 +50,8 @@ export default class ChatsController {
   async store({ request, response }: HttpContext) {
     try {
       const data = await request.validateUsing(createSessionSchema)
-      const session = await this.chatService.createSession(data.title, data.model)
+      const ownerKey = ensureChatOwnerKey(request, response)
+      const session = await this.chatService.createSession(data.title, data.model, ownerKey)
       return response.status(201).json(session)
     } catch (error) {
       return response.status(500).json({
@@ -64,9 +73,13 @@ export default class ChatsController {
 
   async update({ params, request, response }: HttpContext) {
     try {
-      const sessionId = parseInt(params.id)
+      const sessionId = Number.parseInt(params.id)
       const data = await request.validateUsing(updateSessionSchema)
-      const session = await this.chatService.updateSession(sessionId, data)
+      const ownerKey = ensureChatOwnerKey(request, response)
+      const session = await this.chatService.updateSession(sessionId, ownerKey, data)
+      if (!session) {
+        return response.status(404).json({ error: 'Session not found' })
+      }
       return session
     } catch (error) {
       return response.status(500).json({
@@ -75,10 +88,14 @@ export default class ChatsController {
     }
   }
 
-  async destroy({ params, response }: HttpContext) {
+  async destroy({ params, request, response }: HttpContext) {
     try {
-      const sessionId = parseInt(params.id)
-      await this.chatService.deleteSession(sessionId)
+      const sessionId = Number.parseInt(params.id)
+      const ownerKey = ensureChatOwnerKey(request, response)
+      const result = await this.chatService.deleteSession(sessionId, ownerKey)
+      if (!result.success) {
+        return response.status(404).json({ error: 'Session not found' })
+      }
       return response.status(204)
     } catch (error) {
       return response.status(500).json({
@@ -89,9 +106,18 @@ export default class ChatsController {
 
   async addMessage({ params, request, response }: HttpContext) {
     try {
-      const sessionId = parseInt(params.id)
+      const sessionId = Number.parseInt(params.id)
       const data = await request.validateUsing(addMessageSchema)
-      const message = await this.chatService.addMessage(sessionId, data.role, data.content)
+      const ownerKey = ensureChatOwnerKey(request, response)
+      const message = await this.chatService.addMessage(
+        sessionId,
+        ownerKey,
+        data.role,
+        data.content
+      )
+      if (!message) {
+        return response.status(404).json({ error: 'Session not found' })
+      }
       return response.status(201).json(message)
     } catch (error) {
       return response.status(500).json({
@@ -100,9 +126,10 @@ export default class ChatsController {
     }
   }
 
-  async destroyAll({ response }: HttpContext) {
+  async destroyAll({ request, response }: HttpContext) {
     try {
-      const result = await this.chatService.deleteAllSessions()
+      const ownerKey = ensureChatOwnerKey(request, response)
+      const result = await this.chatService.deleteAllSessions(ownerKey)
       return response.status(200).json(result)
     } catch (error) {
       return response.status(500).json({

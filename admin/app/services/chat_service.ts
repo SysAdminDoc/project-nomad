@@ -11,9 +11,11 @@ import { toTitleCase } from '../utils/misc.js'
 export class ChatService {
   constructor(private ollamaService: OllamaService) {}
 
-  async getAllSessions() {
+  async getAllSessions(ownerKey: string) {
     try {
-      const sessions = await ChatSession.query().orderBy('updated_at', 'desc')
+      const sessions = await ChatSession.query()
+        .where('owner_key', ownerKey)
+        .orderBy('updated_at', 'desc')
       return sessions.map((session) => ({
         id: session.id.toString(),
         title: session.title,
@@ -94,9 +96,13 @@ export class ChatService {
     }
   }
 
-  async getSession(sessionId: number) {
+  async getSession(sessionId: number, ownerKey: string) {
     try {
-      const session = await ChatSession.query().where('id', sessionId).preload('messages').first()
+      const session = await ChatSession.query()
+        .where('id', sessionId)
+        .where('owner_key', ownerKey)
+        .preload('messages')
+        .first()
 
       if (!session) {
         return null
@@ -125,11 +131,12 @@ export class ChatService {
     }
   }
 
-  async createSession(title: string, model?: string) {
+  async createSession(title: string, model: string | undefined, ownerKey: string) {
     try {
       const session = await ChatSession.create({
         title,
         model: model || null,
+        owner_key: ownerKey,
       })
 
       return {
@@ -146,9 +153,17 @@ export class ChatService {
     }
   }
 
-  async updateSession(sessionId: number, data: { title?: string; model?: string }) {
+  async updateSession(
+    sessionId: number,
+    ownerKey: string,
+    data: { title?: string; model?: string }
+  ) {
     try {
-      const session = await ChatSession.findOrFail(sessionId)
+      const session = await ChatSession.query()
+        .where('id', sessionId)
+        .where('owner_key', ownerKey)
+        .first()
+      if (!session) return null
 
       if (data.title) {
         session.title = data.title
@@ -177,11 +192,18 @@ export class ChatService {
 
   async addMessage(
     sessionId: number,
+    ownerKey: string,
     role: 'system' | 'user' | 'assistant',
     content: string,
     metadata?: Record<string, unknown>
   ) {
     try {
+      const session = await ChatSession.query()
+        .where('id', sessionId)
+        .where('owner_key', ownerKey)
+        .first()
+      if (!session) return null
+
       const message = await ChatMessage.create({
         session_id: sessionId,
         role,
@@ -190,7 +212,6 @@ export class ChatService {
       })
 
       // Update session's updated_at timestamp
-      const session = await ChatSession.findOrFail(sessionId)
       session.updated_at = DateTime.now()
       await session.save()
 
@@ -210,9 +231,13 @@ export class ChatService {
     }
   }
 
-  async deleteSession(sessionId: number) {
+  async deleteSession(sessionId: number, ownerKey: string) {
     try {
-      const session = await ChatSession.findOrFail(sessionId)
+      const session = await ChatSession.query()
+        .where('id', sessionId)
+        .where('owner_key', ownerKey)
+        .first()
+      if (!session) return { success: false }
       await session.delete()
       return { success: true }
     } catch (error) {
@@ -225,8 +250,14 @@ export class ChatService {
     }
   }
 
-  async getMessageCount(sessionId: number): Promise<number> {
+  async getMessageCount(sessionId: number, ownerKey: string): Promise<number> {
     try {
+      const session = await ChatSession.query()
+        .where('id', sessionId)
+        .where('owner_key', ownerKey)
+        .first()
+      if (!session) return 0
+
       const count = await ChatMessage.query().where('session_id', sessionId).count('* as total')
       return Number(count[0].$extras.total)
     } catch (error) {
@@ -237,7 +268,12 @@ export class ChatService {
     }
   }
 
-  async generateTitle(sessionId: number, userMessage: string, assistantMessage: string) {
+  async generateTitle(
+    sessionId: number,
+    ownerKey: string,
+    userMessage: string,
+    assistantMessage: string
+  ) {
     try {
       const models = await this.ollamaService.getModels()
       const titleModelAvailable = models?.some((m) => m.name === DEFAULT_QUERY_REWRITE_MODEL)
@@ -262,7 +298,7 @@ export class ChatService {
         }
       }
 
-      await this.updateSession(sessionId, { title })
+      await this.updateSession(sessionId, ownerKey, { title })
       logger.info(`[ChatService] Generated title for session ${sessionId}: "${title}"`)
     } catch (error) {
       logger.error(
@@ -271,16 +307,16 @@ export class ChatService {
       // Fall back to truncated user message
       try {
         const fallbackTitle = userMessage.slice(0, 57) + (userMessage.length > 57 ? '...' : '')
-        await this.updateSession(sessionId, { title: fallbackTitle })
+        await this.updateSession(sessionId, ownerKey, { title: fallbackTitle })
       } catch {
         // Silently fail - session keeps "New Chat" title
       }
     }
   }
 
-  async deleteAllSessions() {
+  async deleteAllSessions(ownerKey: string) {
     try {
-      await ChatSession.query().delete()
+      await ChatSession.query().where('owner_key', ownerKey).delete()
       return { success: true, message: 'All chat sessions deleted' }
     } catch (error) {
       logger.error(

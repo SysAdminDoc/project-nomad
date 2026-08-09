@@ -12,6 +12,8 @@ interface ChatSidebarProps {
   onSessionSelect: (id: string) => void
   onNewChat: () => void
   onClearHistory: () => void
+  privacyMode: boolean
+  onPrivacyToggle: (enabled: boolean) => void
   isInModal?: boolean
 }
 
@@ -21,6 +23,8 @@ export default function ChatSidebar({
   onSessionSelect,
   onNewChat,
   onClearHistory,
+  privacyMode,
+  onPrivacyToggle,
   isInModal = false,
 }: ChatSidebarProps) {
   const { aiAssistantName } = usePage<{ aiAssistantName: string }>().props
@@ -44,6 +48,21 @@ export default function ChatSidebar({
         <StyledButton onClick={onNewChat} icon="IconPlus" variant="primary" fullWidth>
           New Chat
         </StyledButton>
+      </div>
+
+      <div className="border-b border-border-subtle px-4 py-3">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+          <input
+            type="checkbox"
+            checked={privacyMode}
+            onChange={(event) => onPrivacyToggle(event.target.checked)}
+            className="h-4 w-4 accent-desert-green"
+          />
+          <span className="font-medium">Private chat</span>
+        </label>
+        <p className="mt-1 text-xs text-text-muted">
+          {privacyMode ? 'This conversation is not saved.' : 'History is isolated to this browser.'}
+        </p>
       </div>
 
       <div className="flex-1 overflow-y-auto">
