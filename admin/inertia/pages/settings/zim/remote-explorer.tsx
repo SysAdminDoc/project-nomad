@@ -11,7 +11,12 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import StyledTable from '~/components/StyledTable'
 import SettingsLayout from '~/layouts/SettingsLayout'
 import { Head } from '@inertiajs/react'
-import { ListRemoteZimFilesResponse, RemoteZimFileEntry } from '../../../../types/zim'
+import {
+  ListRemoteZimFilesResponse,
+  RemoteZimFileEntry,
+  ZimLibraryUpdate,
+  ZimLibraryUpdateCheck,
+} from '../../../../types/zim'
 import { formatBytes } from '~/lib/util'
 import StyledButton from '~/components/StyledButton'
 import { useModals } from '~/context/ModalContext'
@@ -77,6 +82,19 @@ export default function ZimRemoteExplorer() {
   const { data: downloads, invalidate: invalidateDownloads } = useDownloads({
     filetype: 'zim',
     enabled: true,
+  })
+
+  const {
+    data: libraryUpdates,
+    isLoading: isCheckingLibraryUpdates,
+    refetch: refetchLibraryUpdates,
+  } = useQuery<ZimLibraryUpdateCheck | undefined>({
+    queryKey: ['zim-library-updates'],
+    queryFn: () => api.checkZimUpdates(),
+    enabled: isInstalled && isOnline !== false,
+    staleTime: 30 * 60 * 1000,
+    refetchInterval: 12 * 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const { data, fetchNextPage, isFetching, isLoading } =
@@ -269,6 +287,26 @@ export default function ZimRemoteExplorer() {
     },
   })
 
+  const applyZimUpdate = useMutation({
+    mutationFn: (update: ZimLibraryUpdate) =>
+      api.applyZimUpdate(update.current_filename, update.latest.download_url),
+    onSuccess: (result) => {
+      addNotification({
+        message: result?.message || 'ZIM refresh started.',
+        type: 'success',
+      })
+      invalidateDownloads()
+      refetchLibraryUpdates()
+      queryClient.invalidateQueries({ queryKey: ['zim-files'] })
+    },
+    onError: () => {
+      addNotification({
+        message: 'Could not start the ZIM refresh. Check for updates again.',
+        type: 'error',
+      })
+    },
+  })
+
   return (
     <SettingsLayout>
       <Head title="Content Explorer | Project N.O.M.A.D." />
@@ -296,6 +334,63 @@ export default function ZimRemoteExplorer() {
               variant="solid"
               className="!mt-6"
             />
+          )}
+          {isInstalled && (
+            <section className="mt-6 rounded-lg border border-desert-green-light bg-surface-primary p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold text-text-primary">Kiwix library updates</h2>
+                  <p className="text-sm text-text-muted">
+                    Checks library.kiwix.org for newer releases of installed ZIM files.
+                  </p>
+                </div>
+                <StyledButton
+                  onClick={() => refetchLibraryUpdates()}
+                  disabled={isCheckingLibraryUpdates || !isOnline}
+                  loading={isCheckingLibraryUpdates}
+                  icon="IconRefresh"
+                  variant="outline"
+                  size="sm"
+                >
+                  Check now
+                </StyledButton>
+              </div>
+              {libraryUpdates?.error && (
+                <p className="mt-3 text-sm text-desert-orange-dark">{libraryUpdates.error}</p>
+              )}
+              {!isCheckingLibraryUpdates && libraryUpdates?.updates.length === 0 && (
+                <p className="mt-3 text-sm text-text-muted">All installed ZIM files are current.</p>
+              )}
+              {libraryUpdates?.updates.length ? (
+                <div className="mt-4 space-y-3">
+                  {libraryUpdates.updates.map((update) => (
+                    <div
+                      key={update.current_filename}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-desert-tan-lighter p-3"
+                    >
+                      <div>
+                        <p className="font-medium text-text-primary">{update.latest.title}</p>
+                        <p className="text-sm text-text-muted">
+                          {update.current_filename} → {update.latest.file_name} ({formatBytes(update.latest.size_bytes)})
+                        </p>
+                      </div>
+                      <StyledButton
+                        onClick={() => applyZimUpdate.mutate(update)}
+                        disabled={applyZimUpdate.isPending}
+                        loading={
+                          applyZimUpdate.isPending &&
+                          applyZimUpdate.variables?.current_filename === update.current_filename
+                        }
+                        icon="IconDownload"
+                        size="sm"
+                      >
+                        Refresh
+                      </StyledButton>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </section>
           )}
           <div className="mt-8 mb-6 flex items-center justify-between">
             <StyledSectionHeader title="Curated Content" className="!mb-0" />

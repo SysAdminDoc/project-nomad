@@ -6,7 +6,7 @@ import {
   remoteDownloadWithMetadataValidator,
   selectWikipediaValidator,
 } from '#validators/common'
-import { listRemoteZimValidator } from '#validators/zim'
+import { applyZimUpdateValidator, listRemoteZimValidator } from '#validators/zim'
 import { inject } from '@adonisjs/core'
 import type { HttpContext } from '@adonisjs/core/http'
 
@@ -35,6 +35,16 @@ export default class ZimController {
       jobId,
       url: payload.url,
     }
+  }
+
+  async checkUpdates({}: HttpContext) {
+    return await this.zimService.checkForUpdates()
+  }
+
+  async applyUpdate({ request }: HttpContext) {
+    const payload = await request.validateUsing(applyZimUpdateValidator)
+    assertNotPrivateUrl(payload.download_url)
+    return await this.zimService.applyUpdate(payload.current_filename, payload.download_url)
   }
 
   async listCuratedCategories({}: HttpContext) {

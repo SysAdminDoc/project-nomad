@@ -111,7 +111,7 @@ export class RunDownloadJob {
                 .where('resource_id', resourceMetadata.resource_id)
                 .where('resource_type', filetype as 'zim' | 'map')
                 .first()
-              const oldFilePath = oldEntry?.file_path ?? null
+              const oldFilePath = oldEntry?.file_path ?? resourceMetadata.previous_file_path ?? null
 
               await InstalledResource.updateOrCreate(
                 { resource_id: resourceMetadata.resource_id, resource_type: filetype as 'zim' | 'map' },

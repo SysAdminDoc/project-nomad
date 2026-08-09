@@ -65,6 +65,18 @@ export type RemoteZimFileEntry = {
   file_name: string
 }
 
+export type ZimLibraryUpdate = {
+  current_filename: string
+  current_version: string
+  latest: RemoteZimFileEntry
+}
+
+export type ZimLibraryUpdateCheck = {
+  updates: ZimLibraryUpdate[]
+  checked_at: string
+  error?: string
+}
+
 export type ExtractZIMContentOptions = {
   strategy?: ExtractZIMChunkingStrategy
   maxArticles?: number

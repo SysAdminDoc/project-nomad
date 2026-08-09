@@ -41,6 +41,7 @@ export type RunDownloadJobParams = Omit<
     resource_id: string
     version: string
     collection_ref: string | null
+    previous_file_path?: string
   }
 }
 

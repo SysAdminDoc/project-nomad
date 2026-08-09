@@ -8,6 +8,7 @@ import { RunBenchmarkJob } from '#jobs/run_benchmark_job'
 import { EmbedFileJob } from '#jobs/embed_file_job'
 import { CheckUpdateJob } from '#jobs/check_update_job'
 import { CheckServiceUpdatesJob } from '#jobs/check_service_updates_job'
+import { CheckZimUpdatesJob } from '#jobs/check_zim_updates_job'
 
 export default class QueueWork extends BaseCommand {
   static commandName = 'queue:work'
@@ -102,6 +103,7 @@ export default class QueueWork extends BaseCommand {
     // Schedule nightly update checks (idempotent, will persist over restarts)
     await CheckUpdateJob.scheduleNightly()
     await CheckServiceUpdatesJob.scheduleNightly()
+    await CheckZimUpdatesJob.scheduleNightly()
 
     // Safety net: log unhandled rejections instead of crashing the worker process.
     // Individual job errors are already caught by BullMQ; this catches anything that
@@ -131,6 +133,7 @@ export default class QueueWork extends BaseCommand {
     handlers.set(EmbedFileJob.key, new EmbedFileJob())
     handlers.set(CheckUpdateJob.key, new CheckUpdateJob())
     handlers.set(CheckServiceUpdatesJob.key, new CheckServiceUpdatesJob())
+    handlers.set(CheckZimUpdatesJob.key, new CheckZimUpdatesJob())
 
     queues.set(RunDownloadJob.key, RunDownloadJob.queue)
     queues.set(DownloadModelJob.key, DownloadModelJob.queue)
@@ -138,6 +141,7 @@ export default class QueueWork extends BaseCommand {
     queues.set(EmbedFileJob.key, EmbedFileJob.queue)
     queues.set(CheckUpdateJob.key, CheckUpdateJob.queue)
     queues.set(CheckServiceUpdatesJob.key, CheckServiceUpdatesJob.queue)
+    queues.set(CheckZimUpdatesJob.key, CheckZimUpdatesJob.queue)
 
     return [handlers, queues]
   }

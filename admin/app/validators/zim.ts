@@ -7,3 +7,10 @@ export const listRemoteZimValidator = vine.compile(
     query: vine.string().optional(),
   })
 )
+
+export const applyZimUpdateValidator = vine.compile(
+  vine.object({
+    current_filename: vine.string().trim().minLength(1).maxLength(255),
+    download_url: vine.string().url({ require_tld: false }).trim(),
+  })
+)

@@ -2,6 +2,8 @@ import {
   ListRemoteZimFilesResponse,
   RawRemoteZimFileEntry,
   RemoteZimFileEntry,
+  ZimLibraryUpdate,
+  ZimLibraryUpdateCheck,
 } from '../../types/zim.js'
 import axios from 'axios'
 import { XMLParser } from 'fast-xml-parser'
@@ -27,6 +29,7 @@ import { SERVICE_NAMES } from '../../constants/service_names.js'
 import { CollectionManifestService } from './collection_manifest_service.js'
 import { KiwixLibraryService } from './kiwix_library_service.js'
 import type { CategoryWithStatus } from '../../types/collections.js'
+import { getZimResourceIdentity, isNewerZimRelease } from '../utils/zim_updates.js'
 
 const ZIM_MIME_TYPES = ['application/x-zim', 'application/x-openzim', 'application/octet-stream']
 const WIKIPEDIA_OPTIONS_URL = 'https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/collections/wikipedia.json'
@@ -135,6 +138,112 @@ export class ZimService {
       items: withoutExisting,
       has_more: result.feed.totalResults > start,
       total_count: result.feed.totalResults,
+    }
+  }
+
+  async checkForUpdates(): Promise<ZimLibraryUpdateCheck> {
+    const files = (await this.list()).files.filter((file) => file.name.endsWith('.zim'))
+    const updates: ZimLibraryUpdate[] = []
+    const errors: string[] = []
+
+    for (const file of files) {
+      const current = getZimResourceIdentity(file.name)
+      try {
+        const remote = await this.listRemote({
+          start: 0,
+          count: 25,
+          query: current.resourceId,
+        })
+        const latest = remote.items
+          .filter((item) => getZimResourceIdentity(item.file_name).resourceId === current.resourceId)
+          .sort((left, right) => {
+            const leftVersion = getZimResourceIdentity(left.file_name).version
+            const rightVersion = getZimResourceIdentity(right.file_name).version
+            return rightVersion.localeCompare(leftVersion)
+          })[0]
+
+        if (latest && isNewerZimRelease(file.name, latest.file_name, latest.updated)) {
+          updates.push({
+            current_filename: file.name,
+            current_version: current.version,
+            latest,
+          })
+        }
+      } catch (error) {
+        logger.warn(
+          `[ZimService] Failed to check ${file.name}: ${error instanceof Error ? error.message : error}`
+        )
+        errors.push(file.name)
+      }
+    }
+
+    return {
+      updates,
+      checked_at: new Date().toISOString(),
+      ...(errors.length > 0 && {
+        error: `Could not check ${errors.length} installed ZIM file(s).`,
+      }),
+    }
+  }
+
+  async applyUpdate(
+    currentFilename: string,
+    downloadUrl: string
+  ): Promise<{ success: boolean; message: string; jobId?: string; filename?: string }> {
+    const updateCheck = await this.checkForUpdates()
+    const update = updateCheck.updates.find(
+      (candidate) =>
+        candidate.current_filename === currentFilename && candidate.latest.download_url === downloadUrl
+    )
+    if (!update) {
+      throw new Error('The requested ZIM update is no longer available. Check for updates again.')
+    }
+
+    const storagePath = resolve(join(process.cwd(), ZIM_STORAGE_PATH))
+    const currentPath = resolve(join(storagePath, currentFilename))
+    if (
+      currentPath.slice(0, storagePath.length + 1) !== `${storagePath}${sep}` ||
+      !currentFilename.endsWith('.zim')
+    ) {
+      throw new Error('Invalid current ZIM filename.')
+    }
+
+    const latestFilename = update.latest.file_name
+    const latestPath = resolve(join(storagePath, latestFilename))
+    if (latestPath.slice(0, storagePath.length + 1) !== `${storagePath}${sep}`) {
+      throw new Error('Invalid latest ZIM filename.')
+    }
+
+    const existingResource = await InstalledResource.query()
+      .where('resource_type', 'zim')
+      .where('file_path', currentPath)
+      .first()
+    const resourceId =
+      existingResource?.resource_id ?? `kiwix:${getZimResourceIdentity(currentFilename).resourceId}`
+    const version = getZimResourceIdentity(latestFilename).version || update.latest.updated
+
+    const result = await RunDownloadJob.dispatch({
+      url: update.latest.download_url,
+      filepath: latestPath,
+      timeout: 30000,
+      allowedMimeTypes: ZIM_MIME_TYPES,
+      forceNew: true,
+      filetype: 'zim',
+      title: update.latest.title,
+      totalBytes: update.latest.size_bytes,
+      resourceMetadata: {
+        resource_id: resourceId,
+        version,
+        collection_ref: existingResource?.collection_ref ?? 'kiwix-library',
+        previous_file_path: currentPath,
+      },
+    })
+
+    return {
+      success: true,
+      message: `Refreshing ${currentFilename} with ${latestFilename}.`,
+      jobId: result.job?.id,
+      filename: latestFilename,
     }
   }
 

@@ -1,5 +1,5 @@
 import axios, { AxiosError, AxiosInstance } from 'axios'
-import { ListRemoteZimFilesResponse, ListZimFilesResponse } from '../../types/zim'
+import { ListRemoteZimFilesResponse, ListZimFilesResponse, ZimLibraryUpdateCheck } from '../../types/zim'
 import { ServiceSlim } from '../../types/services'
 import { FileEntry } from '../../types/files'
 import { CheckLatestVersionResult, SystemInformationResponse, SystemUpdateStatus } from '../../types/system'
@@ -644,6 +644,28 @@ class API {
   async listZimFiles() {
     return catchInternal(async () => {
       return await this.client.get<ListZimFilesResponse>('/zim/list')
+    })()
+  }
+
+  async checkZimUpdates() {
+    return catchInternal(async () => {
+      const response = await this.client.get<ZimLibraryUpdateCheck>('/zim/updates')
+      return response.data
+    })()
+  }
+
+  async applyZimUpdate(currentFilename: string, downloadUrl: string) {
+    return catchInternal(async () => {
+      const response = await this.client.post<{
+        success: boolean
+        message: string
+        jobId?: string
+        filename?: string
+      }>('/zim/updates/apply', {
+        current_filename: currentFilename,
+        download_url: downloadUrl,
+      })
+      return response.data
     })()
   }
 
