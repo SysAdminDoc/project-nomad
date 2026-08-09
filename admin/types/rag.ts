@@ -28,6 +28,7 @@ export type RAGResult = {
   full_title?: string
   hierarchy?: string
   document_id?: string
+  point_id?: string | number
   content_type?: string
   source?: string
 }

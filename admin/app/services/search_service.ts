@@ -187,7 +187,13 @@ export class FederatedSearchService {
 
   private async searchKnowledgeBase(query: string, limit: number): Promise<SourceSearchResult> {
     await this.getServiceUrl(SERVICE_NAMES.QDRANT)
-    const matches = await this.ragService.searchSimilarDocuments(query, limit)
+    const [kiwixMatches, otherMatches] = await Promise.all([
+      this.ragService.searchKiwixDocuments(query, limit),
+      this.ragService.searchSimilarDocuments(query, limit, 0.3, {
+        must_not: [{ key: 'content_type', match: { value: 'zim_article' } }],
+      }),
+    ])
+    const matches = [...kiwixMatches, ...otherMatches]
 
     return {
       source: 'qdrant',
@@ -201,7 +207,7 @@ export class FederatedSearchService {
         )
 
         return {
-          id: `qdrant:${metadata.document_id || metadata.source || index}`,
+          id: `qdrant:${metadata.point_id || metadata.document_id || metadata.source || index}`,
           source: 'qdrant',
           title,
           snippet: normalizeSearchText(match.text).slice(0, 320),

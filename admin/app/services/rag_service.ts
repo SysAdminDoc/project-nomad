@@ -1,4 +1,4 @@
-import { QdrantClient } from '@qdrant/js-client-rest'
+import { QdrantClient, type Schemas } from '@qdrant/js-client-rest'
 import { DockerService } from './docker_service.js'
 import { inject } from '@adonisjs/core'
 import logger from '@adonisjs/core/services/logger'
@@ -19,6 +19,9 @@ import KVStore from '#models/kv_store'
 import { ZIMExtractionService } from './zim_extraction_service.js'
 import { ZIM_BATCH_SIZE } from '../../constants/zim_extraction.js'
 import { ProcessAndEmbedFileResponse, ProcessZIMFileResponse, RAGResult, RerankedRAGResult } from '../../types/rag.js'
+import { rankBM25, type BM25Document } from '../utils/bm25.js'
+
+type QdrantFilter = Schemas['Filter']
 
 @inject()
 export class RagService {
@@ -92,6 +95,10 @@ export class RagService {
       await this.qdrant!.createPayloadIndex(collectionName, {
         field_name: 'content_type',
         field_schema: 'keyword',
+      })
+      await this.qdrant!.createPayloadIndex(collectionName, {
+        field_name: 'keywords',
+        field_schema: 'text',
       })
     } catch (error) {
       logger.error('Error ensuring Qdrant collection:', error)
@@ -756,7 +763,8 @@ export class RagService {
   public async searchSimilarDocuments(
     query: string,
     limit: number = 5,
-    scoreThreshold: number = 0.3 // Lower default threshold - was 0.7, now 0.3
+    scoreThreshold: number = 0.3, // Lower default threshold - was 0.7, now 0.3
+    filter?: QdrantFilter
   ): Promise<Array<{ text: string; score: number; metadata?: Record<string, any> }>> {
     try {
       logger.debug(`[RAG] Starting similarity search for query: "${query}"`)
@@ -827,6 +835,7 @@ export class RagService {
       const searchResults = await this.qdrant!.search(RagService.CONTENT_COLLECTION_NAME, {
         vector: response.embeddings[0],
         limit: searchLimit,
+        filter,
         score_threshold: scoreThreshold,
         with_payload: true,
       })
@@ -835,6 +844,7 @@ export class RagService {
 
       // Map results with metadata for reranking
       const resultsWithMetadata: RAGResult[] = searchResults.map((result) => ({
+        point_id: result.id,
         text: (result.payload?.text as string) || '',
         score: result.score,
         keywords: (result.payload?.keywords as string) || '',
@@ -876,13 +886,145 @@ export class RagService {
           full_title: result.full_title,
           hierarchy: result.hierarchy,
           document_id: result.document_id,
+          point_id: result.point_id,
           content_type: result.content_type,
+          source: result.source,
         },
       }))
     } catch (error) {
       logger.error('[RAG] Error searching similar documents:', error)
       return []
     }
+  }
+
+  /**
+   * Search only ZIM article chunks using a lexical BM25 candidate pass and a
+   * dense-vector pass, then fuse their normalized scores. The lexical pass
+   * keeps exact titles and terminology discoverable even when an embedding
+   * model is unavailable or a query is outside the model's semantic space.
+   */
+  public async searchKiwixDocuments(
+    query: string,
+    limit = 5
+  ): Promise<Array<{ text: string; score: number; metadata?: Record<string, any> }>> {
+    try {
+      await this._ensureCollection(
+        RagService.CONTENT_COLLECTION_NAME,
+        RagService.EMBEDDING_DIMENSION
+      )
+
+      const terms = this.extractKeywords(this.preprocessQuery(query))
+      const kiwixFilter: QdrantFilter = {
+        must: [{ key: 'content_type', match: { value: 'zim_article' } }],
+        ...(terms.length > 0 && {
+          should: terms.map((term) => ({ key: 'keywords', match: { text: term } })),
+        }),
+      }
+
+      const lexicalDocuments = await this.collectKiwixBM25Candidates(kiwixFilter, terms)
+      const lexicalResults = rankBM25(lexicalDocuments, query, Math.max(limit * 4, 20))
+      const denseResults = await this.searchSimilarDocuments(
+        query,
+        Math.max(limit * 3, 12),
+        0.2,
+        kiwixFilter
+      )
+
+      const denseByPoint = new Map<string, (typeof denseResults)[number]>()
+      for (const result of denseResults) {
+        const pointId = result.metadata?.point_id
+        if (pointId !== undefined) denseByPoint.set(String(pointId), result)
+      }
+
+      const maxBM25 = Math.max(...lexicalResults.map((result) => result.score), 0)
+      const lexicalByPoint = new Map(lexicalResults.map((result) => [result.id, result]))
+      const pointIds = new Set([...lexicalByPoint.keys(), ...denseByPoint.keys()])
+      const fused = Array.from(pointIds).map((pointId) => {
+        const lexical = lexicalByPoint.get(pointId)
+        const dense = denseByPoint.get(pointId)
+        const bm25Score = lexical && maxBM25 > 0 ? lexical.score / maxBM25 : 0
+        const denseScore = dense?.score ?? 0
+        const metadata = {
+          ...(lexical?.metadata ?? dense?.metadata ?? {}),
+          bm25_score: lexical?.score ?? 0,
+          dense_score: denseScore,
+          point_id: pointId,
+          content_type: 'zim_article',
+        }
+
+        return {
+          text: lexical?.text ?? dense?.text ?? '',
+          score: denseScore * 0.65 + bm25Score * 0.35,
+          metadata,
+        }
+      })
+
+      return fused
+        .filter((result) => result.text.trim())
+        .sort((left, right) => right.score - left.score)
+        .slice(0, limit)
+    } catch (error) {
+      logger.error('[RAG] Error running Kiwix hybrid search:', error)
+      return []
+    }
+  }
+
+  private async collectKiwixBM25Candidates(
+    filter: QdrantFilter,
+    terms: string[]
+  ): Promise<BM25Document[]> {
+    if (terms.length === 0) return []
+
+    const documents: BM25Document[] = []
+    let offset: string | number | Record<string, unknown> | null = null
+    const batchSize = 100
+    const maxCandidates = 2000
+
+    do {
+      const scrollResult = await this.qdrant!.scroll(RagService.CONTENT_COLLECTION_NAME, {
+        limit: batchSize,
+        offset,
+        filter,
+        with_payload: [
+          'text',
+          'keywords',
+          'article_title',
+          'section_title',
+          'full_title',
+          'hierarchy',
+          'document_id',
+          'content_type',
+          'source',
+          'article_path',
+        ],
+        with_vector: false,
+      })
+
+      for (const point of scrollResult.points) {
+        const payload = (point.payload ?? {}) as Record<string, unknown>
+        const text = typeof payload.text === 'string' ? payload.text : ''
+        const title = typeof payload.full_title === 'string'
+          ? payload.full_title
+          : typeof payload.article_title === 'string' ? payload.article_title : undefined
+        const keywords = typeof payload.keywords === 'string' ? payload.keywords : ''
+
+        if (text || title) {
+          documents.push({
+            id: String(point.id),
+            text: `${keywords} ${text}`.trim(),
+            title,
+            metadata: { ...payload, point_id: point.id },
+          })
+        }
+
+        if (documents.length >= maxCandidates) break
+      }
+
+      if (documents.length >= maxCandidates) break
+      offset = scrollResult.next_page_offset || null
+    } while (offset !== null)
+
+    return documents
   }
 
   /**

@@ -5,6 +5,7 @@ All notable changes to project-nomad will be documented in this file.
 ## [Unreleased]
 
 - Added federated search across installed Kiwix, Kolibri, FlatNotes, and Qdrant sources with partial-service status reporting.
+- Added BM25 lexical retrieval and dense-vector score fusion for ZIM article chunks indexed in Qdrant.
 
 ## [v0.0.0] - %Y->- (HEAD -> main)
 
