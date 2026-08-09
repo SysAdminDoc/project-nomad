@@ -13,7 +13,12 @@ import type {
   StarterPackWithStatus,
 } from '../../types/collections'
 import { catchInternal } from './util'
-import { NomadChatResponse, NomadInstalledModel, NomadOllamaModel, OllamaChatRequest } from '../../types/ollama'
+import {
+  NomadAvailableModelsResponse,
+  NomadChatResponse,
+  NomadInstalledModel,
+  OllamaChatRequest,
+} from '../../types/ollama'
 import BenchmarkResult from '#models/benchmark_result'
 import { BenchmarkType, RunBenchmarkResponse, SubmitBenchmarkResponse, UpdateBuilderTagResponse } from '../../types/benchmark'
 import type { FederatedSearchResponse } from '../../types/search'
@@ -271,10 +276,7 @@ class API {
 
   async getAvailableModels(params: { query?: string; recommendedOnly?: boolean; limit?: number; force?: boolean }) {
     return catchInternal(async () => {
-      const response = await this.client.get<{
-        models: NomadOllamaModel[]
-        hasMore: boolean
-      }>('/ollama/models', {
+      const response = await this.client.get<NomadAvailableModelsResponse>('/ollama/models', {
         params: { sort: 'pulls', ...params },
       })
       return response.data

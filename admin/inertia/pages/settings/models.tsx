@@ -2,7 +2,7 @@ import { Head, router, usePage } from '@inertiajs/react'
 import { useRef, useState } from 'react'
 import StyledTable from '~/components/StyledTable'
 import SettingsLayout from '~/layouts/SettingsLayout'
-import { NomadOllamaModel } from '../../../types/ollama'
+import { ModelCatalogHardware, NomadOllamaModel } from '../../../types/ollama'
 import StyledButton from '~/components/StyledButton'
 import useServiceInstalledStatus from '~/hooks/useServiceInstalledStatus'
 import Alert from '~/components/Alert'
@@ -25,6 +25,8 @@ import { useSystemInfo } from '~/hooks/useSystemInfo'
 export default function ModelsPage(props: {
   models: {
     availableModels: NomadOllamaModel[]
+    recommendedModels: NomadOllamaModel[]
+    hardware?: ModelCatalogHardware
     installedModels: NomadInstalledModel[]
     settings: { chatSuggestionsEnabled: boolean; aiAssistantCustomName: string; remoteOllamaUrl: string; ollamaFlashAttention: boolean }
   }
@@ -142,6 +144,7 @@ export default function ModelsPage(props: {
   const [query, setQuery] = useState('')
   const [queryUI, setQueryUI] = useState('')
   const [limit, setLimit] = useState(15)
+  const [recommendedOnly, setRecommendedOnly] = useState(false)
 
   const debouncedSetQuery = debounce((val: string) => {
     setQuery(val)
@@ -151,25 +154,46 @@ export default function ModelsPage(props: {
   const [isForceRefreshing, setIsForceRefreshing] = useState(false)
 
   const { data: availableModelData, isFetching, refetch } = useQuery({
-    queryKey: ['ollama', 'availableModels', query, limit],
+    queryKey: ['ollama', 'availableModels', query, limit, recommendedOnly],
     queryFn: async () => {
       const force = forceRefreshRef.current
       forceRefreshRef.current = false
       const res = await api.getAvailableModels({
         query,
-        recommendedOnly: false,
+        recommendedOnly,
         limit,
         force: force || undefined,
       })
       if (!res) {
         return {
           models: [],
+          recommendedModels: [],
           hasMore: false,
+          hardware: props.models.hardware || {
+            profile: 'unknown',
+            label: 'Unknown device',
+            cpuModel: '',
+            gpuModel: '',
+            ramGb: 0,
+            vramGb: 0,
+          },
         }
       }
       return res
     },
-    initialData: { models: props.models.availableModels, hasMore: false },
+    initialData: {
+      models: recommendedOnly ? props.models.recommendedModels : props.models.availableModels,
+      recommendedModels: props.models.recommendedModels,
+      hasMore: false,
+      hardware: props.models.hardware || {
+        profile: 'unknown',
+        label: 'Unknown device',
+        cpuModel: '',
+        gpuModel: '',
+        ramGb: 0,
+        vramGb: 0,
+      },
+    },
   })
 
   async function handleForceRefresh() {
@@ -259,6 +283,8 @@ export default function ModelsPage(props: {
     },
   })
 
+  const modelHardware = availableModelData?.hardware || props.models.hardware
+
   return (
     <SettingsLayout>
       <Head title={`${aiAssistantName} Settings | Project N.O.M.A.D.`} />
@@ -297,6 +323,29 @@ export default function ModelsPage(props: {
                 disabled: reinstalling,
               }}
             />
+          )}
+
+          {modelHardware && (
+            <div className="mt-6 rounded-lg border-2 border-border-subtle bg-surface-primary p-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-lg font-semibold text-text-primary">
+                  Recommendations for {modelHardware.label}
+                </h2>
+                <span className="text-sm text-text-muted">
+                  {modelHardware.ramGb > 0 ? `${modelHardware.ramGb} GB RAM` : 'RAM unavailable'}
+                  {modelHardware.vramGb > 0 ? ` • ${modelHardware.vramGb} GB GPU memory` : ''}
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-text-secondary">
+                Model sizes are estimated from their quantized download size and device memory. Use the
+                recommended list for the best balance of speed and quality.
+              </p>
+              {(modelHardware.cpuModel || modelHardware.gpuModel) && (
+                <p className="mt-2 text-xs text-text-muted">
+                  {[modelHardware.cpuModel, modelHardware.gpuModel].filter(Boolean).join(' • ')}
+                </p>
+              )}
+            </div>
           )}
 
           <StyledSectionHeader title="Settings" className="mt-8 mb-4" />
@@ -449,7 +498,7 @@ export default function ModelsPage(props: {
             message="If you are connected to an OpenAI API host (e.g. LM Studio), please download models directly in that application."
             className="mb-4"
           />
-          <div className="flex justify-start items-center gap-3 mt-4">
+          <div className="flex flex-wrap justify-start items-center gap-3 mt-4">
             <Input
               name="search"
               label=""
@@ -471,6 +520,15 @@ export default function ModelsPage(props: {
             >
               Refresh Models
             </StyledButton>
+            <StyledButton
+              variant={recommendedOnly ? 'primary' : 'secondary'}
+              onClick={() => {
+                setRecommendedOnly((current) => !current)
+                setLimit(15)
+              }}
+            >
+              {recommendedOnly ? 'Show All Models' : 'Show Recommended'}
+            </StyledButton>
           </div>
           <StyledTable<NomadOllamaModel>
             className="font-semibold mt-4"
@@ -482,7 +540,14 @@ export default function ModelsPage(props: {
                 render(record) {
                   return (
                     <div className="flex flex-col">
-                      <p className="text-lg font-semibold">{record.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-lg font-semibold">{record.name}</p>
+                        {record.recommended && (
+                          <span className="rounded-full bg-desert-olive-lighter px-2 py-0.5 text-xs font-medium text-desert-olive-dark">
+                            Recommended
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-text-muted">{record.description}</p>
                     </div>
                   )
@@ -531,9 +596,25 @@ export default function ModelsPage(props: {
                           return (
                             <tr key={tagIndex} className="hover:bg-surface-secondary">
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <span className="text-sm font-medium text-text-primary">
-                                  {tag.name}
-                                </span>
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-sm font-medium text-text-primary">
+                                    {tag.name}
+                                  </span>
+                                  {tag.recommendation && (
+                                    <span
+                                      className={
+                                        tag.recommendation.tier === 'recommended'
+                                          ? 'text-xs text-desert-olive-dark'
+                                          : tag.recommendation.tier === 'possible'
+                                            ? 'text-xs text-desert-orange-dark'
+                                            : 'text-xs text-text-muted'
+                                      }
+                                      title={tag.recommendation.reason}
+                                    >
+                                      {tag.recommendation.label}
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span className="text-sm text-text-secondary">{tag.input || 'N/A'}</span>

@@ -16,6 +16,13 @@ import { BROADCAST_CHANNELS } from '../../constants/broadcast.js'
 import env from '#start/env'
 import { NOMAD_API_DEFAULT_BASE_URL } from '../../constants/misc.js'
 import KVStore from '#models/kv_store'
+import { SystemService } from '#services/system_service'
+import {
+  annotateModelRecommendations,
+  buildModelCatalogHardware,
+  selectRecommendedModels,
+} from '../utils/model_recommendations.js'
+import type { ModelCatalogHardware, NomadAvailableModelsResponse } from '../../types/ollama.js'
 
 const NOMAD_MODELS_API_PATH = '/api/v1/ollama/models'
 const MODELS_CACHE_FILE = path.join(process.cwd(), 'storage', 'ollama-models-cache.json')
@@ -53,8 +60,9 @@ export class OllamaService {
   private baseUrl: string | null = null
   private initPromise: Promise<void> | null = null
   private isOllamaNative: boolean | null = null
+  private modelHardwareCache: { hardware: ModelCatalogHardware; expiresAt: number } | null = null
 
-  constructor() {}
+  constructor(private systemService?: SystemService) {}
 
   private async _initialize() {
     if (!this.initPromise) {
@@ -438,48 +446,33 @@ export class OllamaService {
       query: null,
       limit: 15,
     }
-  ): Promise<{ models: NomadOllamaModel[]; hasMore: boolean } | null> {
+  ): Promise<NomadAvailableModelsResponse | null> {
     try {
+      const hardware = await this.getModelCatalogHardware()
       const models = await this.retrieveAndRefreshModels(sort, force)
       if (!models) {
         logger.warn(
           '[OllamaService] Returning fallback recommended models due to failure in fetching available models'
         )
+        const fallbackModels = annotateModelRecommendations(FALLBACK_RECOMMENDED_OLLAMA_MODELS, hardware)
+        const recommendedModels = selectRecommendedModels(fallbackModels)
         return {
-          models: FALLBACK_RECOMMENDED_OLLAMA_MODELS,
+          models: recommendedOnly ? recommendedModels : fallbackModels,
           hasMore: false,
+          hardware,
+          recommendedModels,
         }
       }
 
-      if (!recommendedOnly) {
-        const filteredModels = query ? this.fuseSearchModels(models, query) : models
-        return {
-          models: filteredModels.slice(0, limit || 15),
-          hasMore: filteredModels.length > (limit || 15),
-        }
-      }
-
-      const sortedByPulls = sort === 'pulls' ? models : this.sortModels(models, 'pulls')
-      const firstThree = sortedByPulls.slice(0, 3)
-
-      const recommendedModels = firstThree.map((model) => {
-        return {
-          ...model,
-          tags: model.tags && model.tags.length > 0 ? [model.tags[0]] : [],
-        }
-      })
-
-      if (query) {
-        const filteredRecommendedModels = this.fuseSearchModels(recommendedModels, query)
-        return {
-          models: filteredRecommendedModels,
-          hasMore: filteredRecommendedModels.length > (limit || 15),
-        }
-      }
-
+      const annotatedModels = annotateModelRecommendations(models, hardware)
+      const recommendedModels = selectRecommendedModels(annotatedModels)
+      const catalogModels = recommendedOnly ? recommendedModels : annotatedModels
+      const filteredModels = query ? this.fuseSearchModels(catalogModels, query) : catalogModels
       return {
-        models: recommendedModels,
-        hasMore: recommendedModels.length > (limit || 15),
+        models: filteredModels.slice(0, limit || 15),
+        hasMore: filteredModels.length > (limit || 15),
+        hardware,
+        recommendedModels,
       }
     } catch (error) {
       logger.error(
@@ -487,6 +480,29 @@ export class OllamaService {
       )
       return null
     }
+  }
+
+  private async getModelCatalogHardware(): Promise<ModelCatalogHardware> {
+    if (this.modelHardwareCache && this.modelHardwareCache.expiresAt > Date.now()) {
+      return this.modelHardwareCache.hardware
+    }
+
+    const remoteOllamaUrl = await KVStore.getValue('ai.remoteOllamaUrl').catch(() => null)
+    const systemInfo = remoteOllamaUrl || !this.systemService
+      ? undefined
+      : await this.systemService.getSystemInfo().catch((error) => {
+          logger.warn(
+            `[OllamaService] Unable to detect local hardware for model recommendations: ${error instanceof Error ? error.message : error}`
+          )
+          return undefined
+        })
+    const hardware = buildModelCatalogHardware(systemInfo, Boolean(remoteOllamaUrl))
+    this.modelHardwareCache = {
+      hardware,
+      expiresAt: Date.now() + 60_000,
+    }
+
+    return hardware
   }
 
   private async retrieveAndRefreshModels(

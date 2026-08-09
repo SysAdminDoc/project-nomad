@@ -930,6 +930,20 @@ export default function EasySetupWizard(props: {
                             Size: {model.tags[0].size}
                           </div>
                         )}
+                        {model.tags?.[0]?.recommendation && (
+                          <div
+                            className={classNames(
+                              'mt-1 text-xs font-medium',
+                              selectedAiModels.includes(model.name)
+                                ? 'text-green-100'
+                                : model.tags[0].recommendation?.tier === 'recommended'
+                                  ? 'text-desert-olive-dark'
+                                  : 'text-text-muted'
+                            )}
+                          >
+                            {model.tags[0].recommendation.label}
+                          </div>
+                        )}
                       </div>
                       <div
                         className={classNames(

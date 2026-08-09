@@ -61,7 +61,7 @@ export default class SettingsController {
   }
 
   async models({ inertia }: HttpContext) {
-    const availableModels = await this.ollamaService.getAvailableModels({
+    const availableModelData = await this.ollamaService.getAvailableModels({
       sort: 'pulls',
       recommendedOnly: false,
       query: null,
@@ -74,7 +74,9 @@ export default class SettingsController {
     const ollamaFlashAttention = await KVStore.getValue('ai.ollamaFlashAttention')
     return inertia.render('settings/models', {
       models: {
-        availableModels: availableModels?.models || [],
+        availableModels: availableModelData?.models || [],
+        recommendedModels: availableModelData?.recommendedModels || [],
+        hardware: availableModelData?.hardware,
         installedModels: installedModels || [],
         settings: {
           chatSuggestionsEnabled: chatSuggestionsEnabled ?? false,
