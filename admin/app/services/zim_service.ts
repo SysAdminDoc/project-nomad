@@ -28,7 +28,8 @@ import { RunDownloadJob } from '#jobs/run_download_job'
 import { SERVICE_NAMES } from '../../constants/service_names.js'
 import { CollectionManifestService } from './collection_manifest_service.js'
 import { KiwixLibraryService } from './kiwix_library_service.js'
-import type { CategoryWithStatus } from '../../types/collections.js'
+import type { CategoryWithStatus, StarterPackWithStatus, ZimCategoriesSpec } from '../../types/collections.js'
+import { buildStarterPackStatuses, getStarterPack } from '../utils/starter_packs.js'
 import { getZimResourceIdentity, isNewerZimRelease } from '../utils/zim_updates.js'
 
 const ZIM_MIME_TYPES = ['application/x-zim', 'application/x-openzim', 'application/octet-stream']
@@ -300,6 +301,34 @@ export class ZimService {
   async listCuratedCategories(): Promise<CategoryWithStatus[]> {
     const manifestService = new CollectionManifestService()
     return manifestService.getCategoriesWithStatus()
+  }
+
+  async listStarterPacks(): Promise<StarterPackWithStatus[]> {
+    const manifestService = new CollectionManifestService()
+    const [spec, installedResources] = await Promise.all([
+      manifestService.getSpecWithFallback<ZimCategoriesSpec>('zim_categories'),
+      InstalledResource.query().where('resource_type', 'zim'),
+    ])
+
+    if (!spec) return []
+
+    return buildStarterPackStatuses(
+      spec.categories,
+      new Set(installedResources.map((resource) => resource.resource_id))
+    )
+  }
+
+  async downloadStarterPack(packId: string): Promise<string[]> {
+    const pack = getStarterPack(packId)
+    if (!pack) throw new Error(`Starter pack not found: ${packId}`)
+
+    const downloaded = new Set<string>()
+    for (const selection of pack.selections) {
+      const resources = await this.downloadCategoryTier(selection.categorySlug, selection.tierSlug)
+      resources?.forEach((resource) => downloaded.add(resource))
+    }
+
+    return [...downloaded]
   }
 
   async downloadCategoryTier(categorySlug: string, tierSlug: string): Promise<string[] | null> {

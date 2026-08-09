@@ -7,6 +7,7 @@ import api from '~/lib/api'
 import { ServiceSlim } from '../../../types/services'
 import CuratedCollectionCard from '~/components/CuratedCollectionCard'
 import CategoryCard from '~/components/CategoryCard'
+import StarterPackCard from '~/components/StarterPackCard'
 import TierSelectionModal from '~/components/TierSelectionModal'
 import WikipediaSelector from '~/components/WikipediaSelector'
 import LoadingSpinner from '~/components/LoadingSpinner'
@@ -18,7 +19,12 @@ import useInternetStatus from '~/hooks/useInternetStatus'
 import { useSystemInfo } from '~/hooks/useSystemInfo'
 import { getPrimaryDiskInfo } from '~/hooks/useDiskDisplayData'
 import classNames from 'classnames'
-import type { CategoryWithStatus, SpecTier, SpecResource } from '../../../types/collections'
+import type {
+  CategoryWithStatus,
+  SpecTier,
+  SpecResource,
+  StarterPackWithStatus,
+} from '../../../types/collections'
 import { resolveTierResources } from '~/lib/collections'
 import { SERVICE_NAMES } from '../../../constants/service_names'
 
@@ -110,6 +116,7 @@ type WizardStep = 1 | 2 | 3 | 4
 
 const CURATED_MAP_COLLECTIONS_KEY = 'curated-map-collections'
 const CURATED_CATEGORIES_KEY = 'curated-categories'
+const STARTER_PACKS_KEY = 'starter-packs'
 const WIKIPEDIA_STATE_KEY = 'wikipedia-state'
 
 export default function EasySetupWizard(props: {
@@ -132,6 +139,7 @@ export default function EasySetupWizard(props: {
 
   // Category/tier selection state
   const [selectedTiers, setSelectedTiers] = useState<Map<string, SpecTier>>(new Map())
+  const [selectedStarterPackId, setSelectedStarterPackId] = useState<string | null>(null)
   const [tierModalOpen, setTierModalOpen] = useState(false)
   const [activeCategory, setActiveCategory] = useState<CategoryWithStatus | null>(null)
 
@@ -160,6 +168,12 @@ export default function EasySetupWizard(props: {
   const { data: categories, isLoading: isLoadingCategories } = useQuery({
     queryKey: [CURATED_CATEGORIES_KEY],
     queryFn: () => api.listCuratedCategories(),
+    refetchOnWindowFocus: false,
+  })
+
+  const { data: starterPacks, isLoading: isLoadingStarterPacks } = useQuery({
+    queryKey: [STARTER_PACKS_KEY],
+    queryFn: () => api.listStarterPacks(),
     refetchOnWindowFocus: false,
   })
 
@@ -212,6 +226,7 @@ export default function EasySetupWizard(props: {
   }
 
   const handleTierSelect = (category: CategoryWithStatus, tier: SpecTier) => {
+    setSelectedStarterPackId(null)
     setSelectedTiers((prev) => {
       const newMap = new Map(prev)
       // If same tier is selected, deselect it
@@ -222,6 +237,22 @@ export default function EasySetupWizard(props: {
       }
       return newMap
     })
+  }
+
+  const handleStarterPackSelect = (pack: StarterPackWithStatus) => {
+    if (!categories || !pack.available || !isOnline) return
+
+    const selections = new Map<string, SpecTier>()
+    for (const selection of pack.selections) {
+      const category = categories.find((candidate) => candidate.slug === selection.categorySlug)
+      const tier = category?.tiers.find((candidate) => candidate.slug === selection.tierSlug)
+      if (tier) selections.set(selection.categorySlug, tier)
+    }
+
+    if (selections.size !== pack.selections.length) return
+
+    setSelectedTiers(selections)
+    setSelectedStarterPackId(pack.id)
   }
 
   const closeTierModal = () => {
@@ -963,6 +994,30 @@ export default function EasySetupWizard(props: {
                 <p className="text-sm text-text-muted">Curated collections for offline reference</p>
               </div>
             </div>
+
+            {isLoadingStarterPacks ? (
+              <div className="flex justify-center py-8">
+                <LoadingSpinner />
+              </div>
+            ) : starterPacks && starterPacks.length > 0 ? (
+              <div className="mb-8">
+                <h4 className="text-lg font-semibold text-text-primary mb-1">Starter Packs</h4>
+                <p className="text-sm text-text-muted mb-4">
+                  Choose a ready-made offline library, then adjust individual categories if needed.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {starterPacks.map((pack) => (
+                    <StarterPackCard
+                      key={pack.id}
+                      pack={pack}
+                      selected={selectedStarterPackId === pack.id}
+                      disabled={!isOnline || !categories}
+                      onSelect={handleStarterPackSelect}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {isLoadingCategories ? (
               <div className="flex justify-center py-12">

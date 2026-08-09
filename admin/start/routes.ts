@@ -35,6 +35,8 @@ router.on('/knowledge-base').redirectToPath('/chat?knowledge_base=true') // redi
 router.get('/easy-setup', [EasySetupController, 'index'])
 router.get('/easy-setup/complete', [EasySetupController, 'complete'])
 router.get('/api/easy-setup/curated-categories', [EasySetupController, 'listCuratedCategories'])
+router.get('/api/easy-setup/starter-packs', [EasySetupController, 'listStarterPacks'])
+router.post('/api/easy-setup/starter-packs/download', [EasySetupController, 'downloadStarterPack'])
 router.post('/api/manifests/refresh', [EasySetupController, 'refreshManifests'])
 router
   .group(() => {

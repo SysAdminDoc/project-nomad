@@ -66,6 +66,26 @@ export type CategoryWithStatus = SpecCategory & {
   installedTierSlug?: string
 }
 
+export type StarterPackSelection = {
+  categorySlug: string
+  tierSlug: string
+}
+
+export type StarterPackDefinition = {
+  id: string
+  name: string
+  description: string
+  icon: string
+  selections: StarterPackSelection[]
+}
+
+export type StarterPackWithStatus = StarterPackDefinition & {
+  available: boolean
+  resource_count: number
+  installed_count: number
+  size_mb: number
+}
+
 export type CollectionWithStatus = SpecCollection & {
   all_installed: boolean
   installed_count: number

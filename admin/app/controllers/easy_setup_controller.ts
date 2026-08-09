@@ -1,6 +1,7 @@
 import { SystemService } from '#services/system_service'
 import { ZimService } from '#services/zim_service'
 import { CollectionManifestService } from '#services/collection_manifest_service'
+import { downloadStarterPackValidator } from '#validators/starter_packs'
 import KVStore from '#models/kv_store'
 import { inject } from '@adonisjs/core'
 import type { HttpContext } from '@adonisjs/core/http'
@@ -31,6 +32,21 @@ export default class EasySetupController {
 
   async listCuratedCategories({}: HttpContext) {
     return await this.zimService.listCuratedCategories()
+  }
+
+  async listStarterPacks({}: HttpContext) {
+    return await this.zimService.listStarterPacks()
+  }
+
+  async downloadStarterPack({ request }: HttpContext) {
+    const { packId } = await request.validateUsing(downloadStarterPackValidator)
+    const resources = await this.zimService.downloadStarterPack(packId)
+
+    return {
+      message: 'Starter pack downloads started successfully',
+      packId,
+      resources,
+    }
   }
 
   async refreshManifests({}: HttpContext) {
