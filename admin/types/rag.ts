@@ -24,15 +24,27 @@ export type RAGResult = {
   chunk_index: number
   created_at: number
   article_title?: string
+  article_path?: string
   section_title?: string
+  section_anchor?: string
   full_title?: string
   hierarchy?: string
   document_id?: string
   point_id?: string | number
   content_type?: string
   source?: string
+  archive_title?: string
 }
 
 export type RerankedRAGResult = Omit<RAGResult, 'keywords'> & {
   finalScore: number
+}
+
+export type RAGCitation = {
+  id: string
+  title: string
+  section?: string
+  source?: string
+  url?: string
+  score: number
 }

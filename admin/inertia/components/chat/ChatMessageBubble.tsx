@@ -1,10 +1,31 @@
 import classNames from '~/lib/classNames'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { IconBook } from '@tabler/icons-react'
 import { ChatMessage } from '../../../types/chat'
 
 export interface ChatMessageBubbleProps {
   message: ChatMessage
+}
+
+function getCitationHref(url: string): string | undefined {
+  try {
+    const parsed = new URL(url)
+    if (!['http:', 'https:'].includes(parsed.protocol)) return undefined
+
+    // Service URLs are generated server-side and may use Docker's internal
+    // hostname. Rewrite those hosts for the browser just like service links do.
+    if (
+      ['localhost', '127.0.0.1', 'kiwix', 'nomad_kiwix_server'].includes(parsed.hostname)
+    ) {
+      parsed.hostname = window.location.hostname
+      if (window.location.protocol === 'https:') parsed.protocol = 'https:'
+    }
+
+    return parsed.href
+  } catch {
+    return undefined
+  }
 }
 
 export default function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
@@ -12,7 +33,9 @@ export default function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
     <div
       className={classNames(
         'max-w-[70%] rounded-lg px-4 py-3',
-        message.role === 'user' ? 'bg-desert-green text-white' : 'bg-surface-secondary text-text-primary'
+        message.role === 'user'
+          ? 'bg-desert-green text-white'
+          : 'bg-surface-secondary text-text-primary'
       )}
     >
       {message.isThinking && message.thinking && (
@@ -102,6 +125,43 @@ export default function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
           <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
         )}
       </div>
+      {message.role === 'assistant' &&
+        message.metadata?.citations &&
+        message.metadata.citations.length > 0 && (
+          <div className="mt-3 border-t border-border-subtle pt-2 text-xs text-text-muted">
+            <div className="mb-1 flex items-center gap-1 font-medium text-text-secondary">
+              <IconBook size={14} aria-hidden="true" />
+              Sources
+            </div>
+            <ol className="space-y-1">
+              {message.metadata.citations.map((citation, index) => {
+                const href = citation.url ? getCitationHref(citation.url) : undefined
+                const label = citation.section
+                  ? `${citation.title} — ${citation.section}`
+                  : citation.title
+
+                return (
+                  <li key={citation.id} className="flex gap-1.5">
+                    <span className="shrink-0">[{index + 1}]</span>
+                    {href ? (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-desert-green underline hover:text-desert-green/80"
+                      >
+                        {label}
+                      </a>
+                    ) : (
+                      <span>{label}</span>
+                    )}
+                    {citation.source && <span className="truncate">({citation.source})</span>}
+                  </li>
+                )
+              })}
+            </ol>
+          </div>
+        )}
       <div
         className={classNames(
           'text-xs mt-2',

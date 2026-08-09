@@ -11,6 +11,7 @@ All notable changes to project-nomad will be documented in this file.
 - Added optional persistent npm, PyPI, and Docker Hub pull-through caches for offline development.
 - Added hardware-aware Ollama model recommendations for Raspberry Pi 5, Jetson, and x86 NVIDIA systems.
 - Added optional Whisper.cpp speech-to-text and Piper text-to-speech services with persistent models and voice data.
+- Added clickable ZIM page and section citations to RAG chat responses, with citations preserved in chat history.
 
 ## [v0.0.0] - %Y->- (HEAD -> main)
 

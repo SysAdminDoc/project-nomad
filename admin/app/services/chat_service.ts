@@ -51,21 +51,21 @@ export class ChatService {
           {
             role: 'user',
             content: SYSTEM_PROMPTS.chat_suggestions,
-          }
+          },
         ],
         stream: false,
       })
 
       if (response && response.message && response.message.content) {
         const content = response.message.content.trim()
-        
+
         // Handle both comma-separated and newline-separated formats
         let suggestions: string[] = []
-        
+
         // Try splitting by commas first
         if (content.includes(',')) {
           suggestions = content.split(',').map((s) => s.trim())
-        } 
+        }
         // Fall back to newline separation
         else {
           suggestions = content
@@ -76,11 +76,9 @@ export class ChatService {
             // Remove surrounding quotes if present
             .map((s) => s.replace(/^["']|["']$/g, ''))
         }
-        
+
         // Filter out empty strings and limit to 3 suggestions
-        const filtered =  suggestions
-          .filter((s) => s.length > 0)
-          .slice(0, 3)
+        const filtered = suggestions.filter((s) => s.length > 0).slice(0, 3)
 
         return filtered.map((s) => toTitleCase(s))
       } else {
@@ -113,6 +111,7 @@ export class ChatService {
           id: msg.id.toString(),
           role: msg.role,
           content: msg.content,
+          metadata: msg.metadata,
           timestamp: msg.created_at.toJSDate(),
         })),
       }
@@ -176,12 +175,18 @@ export class ChatService {
     }
   }
 
-  async addMessage(sessionId: number, role: 'system' | 'user' | 'assistant', content: string) {
+  async addMessage(
+    sessionId: number,
+    role: 'system' | 'user' | 'assistant',
+    content: string,
+    metadata?: Record<string, unknown>
+  ) {
     try {
       const message = await ChatMessage.create({
         session_id: sessionId,
         role,
         content,
+        metadata: metadata ?? null,
       })
 
       // Update session's updated_at timestamp

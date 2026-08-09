@@ -18,6 +18,9 @@ export default class ChatMessage extends BaseModel {
   @column()
   declare content: string
 
+  @column()
+  declare metadata: Record<string, unknown> | null
+
   @belongsTo(() => ChatSession, { foreignKey: 'id', localKey: 'session_id' })
   declare session: BelongsTo<typeof ChatSession>
 

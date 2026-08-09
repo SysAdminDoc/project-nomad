@@ -1,6 +1,9 @@
 import { inject } from '@adonisjs/core'
 import OpenAI from 'openai'
-import type { ChatCompletionChunk, ChatCompletionMessageParam } from 'openai/resources/chat/completions.js'
+import type {
+  ChatCompletionChunk,
+  ChatCompletionMessageParam,
+} from 'openai/resources/chat/completions.js'
 import type { Stream } from 'openai/streaming.js'
 import { NomadOllamaModel } from '../../types/ollama.js'
 import { FALLBACK_RECOMMENDED_OLLAMA_MODELS } from '../../constants/ollama.js'
@@ -23,6 +26,7 @@ import {
   selectRecommendedModels,
 } from '../utils/model_recommendations.js'
 import type { ModelCatalogHardware, NomadAvailableModelsResponse } from '../../types/ollama.js'
+import type { RAGCitation } from '../../types/rag.js'
 
 const NOMAD_MODELS_API_PATH = '/api/v1/ollama/models'
 const MODELS_CACHE_FILE = path.join(process.cwd(), 'storage', 'ollama-models-cache.json')
@@ -39,11 +43,13 @@ export type NomadChatResponse = {
   message: { content: string; thinking?: string }
   done: boolean
   model: string
+  citations?: RAGCitation[]
 }
 
 export type NomadChatStreamChunk = {
   message: { content: string; thinking?: string }
   done: boolean
+  citations?: RAGCitation[]
 }
 
 type ChatInput = {
@@ -164,9 +170,7 @@ export class OllamaService {
       return { success: true, message: 'Model downloaded successfully.' }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      logger.error(
-        `[OllamaService] Failed to download model "${model}": ${errorMessage}`
-      )
+      logger.error(`[OllamaService] Failed to download model "${model}": ${errorMessage}`)
 
       // Check for version mismatch (Ollama 412 response)
       const isVersionMismatch = errorMessage.includes('newer version of Ollama')
@@ -254,7 +258,9 @@ export class OllamaService {
       params.num_ctx = chatRequest.numCtx
     }
 
-    const stream = (await this.openai.chat.completions.create(params)) as unknown as Stream<ChatCompletionChunk>
+    const stream = (await this.openai.chat.completions.create(
+      params
+    )) as unknown as Stream<ChatCompletionChunk>
 
     // Returns how many trailing chars of `text` could be the start of `tag`
     function partialTagSuffix(tag: string, text: string): number {
@@ -314,7 +320,9 @@ export class OllamaService {
             content: parsedContent,
             thinking: nativeThinking + parsedThinking,
           },
-          done: chunk.choices[0]?.finish_reason !== null && chunk.choices[0]?.finish_reason !== undefined,
+          done:
+            chunk.choices[0]?.finish_reason !== null &&
+            chunk.choices[0]?.finish_reason !== undefined,
         }
       }
     }
@@ -332,7 +340,10 @@ export class OllamaService {
         { model: modelName },
         { timeout: 5000 }
       )
-      return Array.isArray(response.data?.capabilities) && response.data.capabilities.includes('thinking')
+      return (
+        Array.isArray(response.data?.capabilities) &&
+        response.data.capabilities.includes('thinking')
+      )
     } catch {
       // Non-Ollama backends don't expose /api/show — assume no thinking support
       return false
@@ -355,7 +366,10 @@ export class OllamaService {
       logger.error(
         `[OllamaService] Failed to delete model "${modelName}": ${error instanceof Error ? error.message : error}`
       )
-      return { success: false, message: 'Failed to delete model. This may not be an Ollama backend.' }
+      return {
+        success: false,
+        message: 'Failed to delete model. This may not be an Ollama backend.',
+      }
     }
   }
 
@@ -387,7 +401,11 @@ export class OllamaService {
       // Explicitly request float format — some backends (e.g. LM Studio) don't reliably
       // implement the base64 encoding the OpenAI SDK requests by default.
       logger.info('[OllamaService] /api/embed unavailable, falling back to /v1/embeddings')
-      const results = await this.openai.embeddings.create({ model, input, encoding_format: 'float' })
+      const results = await this.openai.embeddings.create({
+        model,
+        input,
+        encoding_format: 'float',
+      })
       return { embeddings: results.data.map((e) => e.embedding as number[]) }
     }
   }
@@ -454,7 +472,10 @@ export class OllamaService {
         logger.warn(
           '[OllamaService] Returning fallback recommended models due to failure in fetching available models'
         )
-        const fallbackModels = annotateModelRecommendations(FALLBACK_RECOMMENDED_OLLAMA_MODELS, hardware)
+        const fallbackModels = annotateModelRecommendations(
+          FALLBACK_RECOMMENDED_OLLAMA_MODELS,
+          hardware
+        )
         const recommendedModels = selectRecommendedModels(fallbackModels)
         return {
           models: recommendedOnly ? recommendedModels : fallbackModels,
@@ -488,14 +509,15 @@ export class OllamaService {
     }
 
     const remoteOllamaUrl = await KVStore.getValue('ai.remoteOllamaUrl').catch(() => null)
-    const systemInfo = remoteOllamaUrl || !this.systemService
-      ? undefined
-      : await this.systemService.getSystemInfo().catch((error) => {
-          logger.warn(
-            `[OllamaService] Unable to detect local hardware for model recommendations: ${error instanceof Error ? error.message : error}`
-          )
-          return undefined
-        })
+    const systemInfo =
+      remoteOllamaUrl || !this.systemService
+        ? undefined
+        : await this.systemService.getSystemInfo().catch((error) => {
+            logger.warn(
+              `[OllamaService] Unable to detect local hardware for model recommendations: ${error instanceof Error ? error.message : error}`
+            )
+            return undefined
+          })
     const hardware = buildModelCatalogHardware(systemInfo, Boolean(remoteOllamaUrl))
     this.modelHardwareCache = {
       hardware,

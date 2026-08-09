@@ -82,8 +82,8 @@ export type ExtractZIMContentOptions = {
   maxArticles?: number
   onProgress?: (processedArticles: number, totalArticles: number) => void
   // Batch processing options to avoid lock timeouts
-  startOffset?: number  // Article index to start from for resuming
-  batchSize?: number    // Max articles to process in this batch
+  startOffset?: number // Article index to start from for resuming
+  batchSize?: number // Max articles to process in this batch
 }
 
 export type ExtractZIMChunkingStrategy = 'structured' | 'simple'
@@ -107,6 +107,7 @@ export type ZIMContentChunk = {
 
   // Section-level context for structured chunks
   sectionTitle: string
+  sectionAnchor?: string
   fullTitle: string // Combined "Article Title - Section Title"
   hierarchy: string // Breadcrumb trail
   sectionLevel?: number // Heading level (2=h2, 3=h3, etc.)

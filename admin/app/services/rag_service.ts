@@ -4,7 +4,14 @@ import { inject } from '@adonisjs/core'
 import logger from '@adonisjs/core/services/logger'
 import { TokenChunker } from '@chonkiejs/core'
 import sharp from 'sharp'
-import { deleteFileIfExists, determineFileType, getFile, getFileStatsIfExists, listDirectoryContentsRecursive, ZIM_STORAGE_PATH } from '../utils/fs.js'
+import {
+  deleteFileIfExists,
+  determineFileType,
+  getFile,
+  getFileStatsIfExists,
+  listDirectoryContentsRecursive,
+  ZIM_STORAGE_PATH,
+} from '../utils/fs.js'
 import { PDFParse } from 'pdf-parse'
 import { createWorker } from 'tesseract.js'
 import { fromBuffer } from 'pdf2pic'
@@ -18,7 +25,12 @@ import { join, resolve, sep } from 'node:path'
 import KVStore from '#models/kv_store'
 import { ZIMExtractionService } from './zim_extraction_service.js'
 import { ZIM_BATCH_SIZE } from '../../constants/zim_extraction.js'
-import { ProcessAndEmbedFileResponse, ProcessZIMFileResponse, RAGResult, RerankedRAGResult } from '../../types/rag.js'
+import {
+  ProcessAndEmbedFileResponse,
+  ProcessZIMFileResponse,
+  RAGResult,
+  RerankedRAGResult,
+} from '../../types/rag.js'
 import { rankBM25, type BM25Document } from '../utils/bm25.js'
 
 type QdrantFilter = Schemas['Filter']
@@ -38,8 +50,8 @@ export class RagService {
   public static TARGET_TOKENS_PER_CHUNK = 1500 // Target 1500 tokens per chunk for embedding
   public static PREFIX_TOKEN_BUDGET = 10 // Reserve ~10 tokens for prefixes
   public static CHAR_TO_TOKEN_RATIO = 2 // Conservative chars-per-token estimate; technical docs
-                                         // (numbers, symbols, abbreviations) tokenize denser
-                                         // than plain prose (~3), so 2 avoids context overflows
+  // (numbers, symbols, abbreviations) tokenize denser
+  // than plain prose (~3), so 2 avoids context overflows
   // Nomic Embed Text v1.5 uses task-specific prefixes for optimal performance
   public static SEARCH_DOCUMENT_PREFIX = 'search_document: '
   public static SEARCH_QUERY_PREFIX = 'search_query: '
@@ -48,7 +60,7 @@ export class RagService {
   constructor(
     private dockerService: DockerService,
     private ollamaService: OllamaService
-  ) { }
+  ) {}
 
   private async _initializeQdrantClient() {
     if (!this.qdrantInitPromise) {
@@ -114,15 +126,17 @@ export class RagService {
    * - Control characters (except newlines, tabs, and carriage returns)
    */
   private sanitizeText(text: string): string {
-    return text
-      // Null bytes
-      .replace(/\x00/g, '')
-      // Problematic control characters (keep \n, \r, \t)
-      .replace(/[\x01-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '')
-      // Invalid Unicode surrogates
-      .replace(/[\uD800-\uDFFF]/g, '')
-      // Trim extra whitespace
-      .trim()
+    return (
+      text
+        // Null bytes
+        .replace(/\x00/g, '')
+        // Problematic control characters (keep \n, \r, \t)
+        .replace(/[\x01-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '')
+        // Invalid Unicode surrogates
+        .replace(/[\uD800-\uDFFF]/g, '')
+        // Trim extra whitespace
+        .trim()
+    )
   }
 
   /**
@@ -176,33 +190,33 @@ export class RagService {
    * TODO: We could probably move this to a separate QueryPreprocessor class if it grows more complex, but for now it's manageable here.
    */
   private static QUERY_EXPANSION_DICTIONARY: Record<string, string> = {
-    'bob': 'bug out bag',
-    'bov': 'bug out vehicle',
-    'bol': 'bug out location',
-    'edc': 'every day carry',
-    'mre': 'meal ready to eat',
-    'shtf': 'shit hits the fan',
-    'teotwawki': 'the end of the world as we know it',
-    'opsec': 'operational security',
-    'ifak': 'individual first aid kit',
-    'ghb': 'get home bag',
-    'ghi': 'get home in',
-    'wrol': 'without rule of law',
-    'emp': 'electromagnetic pulse',
-    'ham': 'ham amateur radio',
-    'nbr': 'nuclear biological radiological',
-    'cbrn': 'chemical biological radiological nuclear',
-    'sar': 'search and rescue',
-    'comms': 'communications radio',
-    'fifo': 'first in first out',
-    'mylar': 'mylar bag food storage',
-    'paracord': 'paracord 550 cord',
-    'ferro': 'ferro rod fire starter',
-    'bivvy': 'bivvy bivy emergency shelter',
-    'bdu': 'battle dress uniform',
-    'gmrs': 'general mobile radio service',
-    'frs': 'family radio service',
-    'nbc': 'nuclear biological chemical',
+    bob: 'bug out bag',
+    bov: 'bug out vehicle',
+    bol: 'bug out location',
+    edc: 'every day carry',
+    mre: 'meal ready to eat',
+    shtf: 'shit hits the fan',
+    teotwawki: 'the end of the world as we know it',
+    opsec: 'operational security',
+    ifak: 'individual first aid kit',
+    ghb: 'get home bag',
+    ghi: 'get home in',
+    wrol: 'without rule of law',
+    emp: 'electromagnetic pulse',
+    ham: 'ham amateur radio',
+    nbr: 'nuclear biological radiological',
+    cbrn: 'chemical biological radiological nuclear',
+    sar: 'search and rescue',
+    comms: 'communications radio',
+    fifo: 'first in first out',
+    mylar: 'mylar bag food storage',
+    paracord: 'paracord 550 cord',
+    ferro: 'ferro rod fire starter',
+    bivvy: 'bivvy bivy emergency shelter',
+    bdu: 'battle dress uniform',
+    gmrs: 'general mobile radio service',
+    frs: 'family radio service',
+    nbc: 'nuclear biological chemical',
   }
 
   private preprocessQuery(query: string): string {
@@ -263,7 +277,9 @@ export class RagService {
 
         if (!embeddingModel) {
           try {
-            const downloadResult = await this.ollamaService.downloadModel(RagService.EMBEDDING_MODEL)
+            const downloadResult = await this.ollamaService.downloadModel(
+              RagService.EMBEDDING_MODEL
+            )
             if (!downloadResult.success) {
               throw new Error(downloadResult.message || 'Unknown error during model download')
             }
@@ -283,7 +299,9 @@ export class RagService {
       // TokenChunker uses character-based tokenization (1 char = 1 token)
       // We need to convert our embedding model's token counts to character counts
       // since nomic-embed-text tokenizer uses ~3 chars per token
-      const targetCharsPerChunk = Math.floor(RagService.TARGET_TOKENS_PER_CHUNK * RagService.CHAR_TO_TOKEN_RATIO)
+      const targetCharsPerChunk = Math.floor(
+        RagService.TARGET_TOKENS_PER_CHUNK * RagService.CHAR_TO_TOKEN_RATIO
+      )
       const overlapChars = Math.floor(150 * RagService.CHAR_TO_TOKEN_RATIO)
 
       const chunker = await TokenChunker.create({
@@ -331,9 +349,14 @@ export class RagService {
         const batchStart = batchIdx * batchSize
         const batch = prefixedChunks.slice(batchStart, batchStart + batchSize)
 
-        logger.debug(`[RAG] Embedding batch ${batchIdx + 1}/${totalBatches} (${batch.length} chunks)`)
+        logger.debug(
+          `[RAG] Embedding batch ${batchIdx + 1}/${totalBatches} (${batch.length} chunks)`
+        )
 
-        const response = await this.ollamaService.embed(this.resolvedEmbeddingModel ?? RagService.EMBEDDING_MODEL, batch)
+        const response = await this.ollamaService.embed(
+          this.resolvedEmbeddingModel ?? RagService.EMBEDDING_MODEL,
+          batch
+        )
 
         embeddings.push(...response.embeddings)
 
@@ -364,13 +387,14 @@ export class RagService {
 
         logger.debug(`[RAG] Extracted keywords for chunk ${index}: [${allKeywords.join(', ')}]`)
         if (structuralKeywords.length > 0) {
-          logger.debug(`[RAG]   - Structural: [${structuralKeywords.join(', ')}], Content: [${contentKeywords.join(', ')}]`)
+          logger.debug(
+            `[RAG]   - Structural: [${structuralKeywords.join(', ')}], Content: [${contentKeywords.join(', ')}]`
+          )
         }
 
         // Sanitize source metadata as well
-        const sanitizedSource = typeof metadata.source === 'string'
-          ? this.sanitizeText(metadata.source)
-          : 'unknown'
+        const sanitizedSource =
+          typeof metadata.source === 'string' ? this.sanitizeText(metadata.source) : 'unknown'
 
         return {
           id: randomUUID(), // qdrant requires either uuid or unsigned int
@@ -383,7 +407,7 @@ export class RagService {
             keywords: allKeywords.join(' '), // store as space-separated string for text search
             char_count: sanitizedText.length,
             created_at: timestamp,
-            source: sanitizedSource
+            source: sanitizedSource,
           },
         }
       })
@@ -493,9 +517,7 @@ export class RagService {
       batchSize: ZIM_BATCH_SIZE,
     })
 
-    logger.info(
-      `[RAG] Extracted ${zimChunks.length} chunks from ZIM file with enhanced metadata`
-    )
+    logger.info(`[RAG] Extracted ${zimChunks.length} chunks from ZIM file with enhanced metadata`)
 
     // Process each chunk individually with its metadata
     let totalChunks = 0
@@ -511,6 +533,7 @@ export class RagService {
 
         // Section-level context
         section_title: zimChunk.sectionTitle,
+        section_anchor: zimChunk.sectionAnchor,
         full_title: zimChunk.fullTitle,
         hierarchy: zimChunk.hierarchy,
         section_level: zimChunk.sectionLevel,
@@ -629,9 +652,7 @@ export class RagService {
     })
 
     // If no spine found, fall back to all manifest items
-    const contentFiles = spineOrder.length > 0
-      ? spineOrder
-      : Array.from(manifestItems.values())
+    const contentFiles = spineOrder.length > 0 ? spineOrder : Array.from(manifestItems.values())
 
     // Extract text from each content file in order
     const textParts: string[] = []
@@ -650,7 +671,9 @@ export class RagService {
     }
 
     const fullText = textParts.join('\n\n')
-    logger.debug(`[RAG] EPUB extracted ${textParts.length} chapters, ${fullText.length} characters total`)
+    logger.debug(
+      `[RAG] EPUB extracted ${textParts.length} chapters, ${fullText.length} characters total`
+    )
     return fullText
   }
 
@@ -661,12 +684,19 @@ export class RagService {
     onProgress?: (percent: number) => Promise<void>
   ): Promise<{ success: boolean; message: string; chunks?: number }> {
     if (!extractedText || extractedText.trim().length === 0) {
-      return { success: false, message: 'Process completed succesfully, but no text was found to embed.' }
+      return {
+        success: false,
+        message: 'Process completed succesfully, but no text was found to embed.',
+      }
     }
 
-    const embedResult = await this.embedAndStoreText(extractedText, {
-      source: filepath
-    }, onProgress)
+    const embedResult = await this.embedAndStoreText(
+      extractedText,
+      {
+        source: filepath,
+      },
+      onProgress
+    )
 
     if (!embedResult) {
       return { success: false, message: 'Failed to embed and store the extracted text.' }
@@ -687,7 +717,7 @@ export class RagService {
   /**
    * Main pipeline to process and embed an uploaded file into the RAG knowledge base.
    * This includes text extraction, chunking, embedding, and storing in Qdrant.
-   * 
+   *
    * Orchestrates file type detection and delegates to specialized processors.
    * For ZIM files, supports batch processing via batchOffset parameter.
    */
@@ -739,12 +769,15 @@ export class RagService {
 
       // Extraction done — scale remaining embedding progress from 15% to 100%
       if (onProgress) await onProgress(15)
-      const scaledProgress = onProgress
-        ? (p: number) => onProgress(15 + p * 0.85)
-        : undefined
+      const scaledProgress = onProgress ? (p: number) => onProgress(15 + p * 0.85) : undefined
 
       // Embed extracted text and cleanup
-      return await this.embedTextAndCleanup(extractedText, filepath, deleteAfterEmbedding, scaledProgress)
+      return await this.embedTextAndCleanup(
+        extractedText,
+        filepath,
+        deleteAfterEmbedding,
+        scaledProgress
+      )
     } catch (error) {
       logger.error('[RAG] Error processing and embedding file:', error)
       return { success: false, message: 'Error processing and embedding file.' }
@@ -824,7 +857,10 @@ export class RagService {
         return []
       }
 
-      const response = await this.ollamaService.embed(this.resolvedEmbeddingModel ?? RagService.EMBEDDING_MODEL, [prefixedQuery])
+      const response = await this.ollamaService.embed(
+        this.resolvedEmbeddingModel ?? RagService.EMBEDDING_MODEL,
+        [prefixedQuery]
+      )
 
       // Perform semantic search with a higher limit to enable reranking
       const searchLimit = limit * 3 // Get more results for reranking
@@ -852,12 +888,15 @@ export class RagService {
         created_at: (result.payload?.created_at as number) || 0,
         // Enhanced ZIM metadata (likely be undefined for non-ZIM content)
         article_title: result.payload?.article_title as string | undefined,
+        article_path: result.payload?.article_path as string | undefined,
         section_title: result.payload?.section_title as string | undefined,
+        section_anchor: result.payload?.section_anchor as string | undefined,
         full_title: result.payload?.full_title as string | undefined,
         hierarchy: result.payload?.hierarchy as string | undefined,
         document_id: result.payload?.document_id as string | undefined,
         content_type: result.payload?.content_type as string | undefined,
         source: result.payload?.source as string | undefined,
+        archive_title: result.payload?.archive_title as string | undefined,
       }))
 
       const rerankedResults = this.rerankResults(resultsWithMetadata, keywords, query)
@@ -882,13 +921,16 @@ export class RagService {
           semantic_score: result.score,
           // Enhanced ZIM metadata (likely be undefined for non-ZIM content)
           article_title: result.article_title,
+          article_path: result.article_path,
           section_title: result.section_title,
+          section_anchor: result.section_anchor,
           full_title: result.full_title,
           hierarchy: result.hierarchy,
           document_id: result.document_id,
           point_id: result.point_id,
           content_type: result.content_type,
           source: result.source,
+          archive_title: result.archive_title,
         },
       }))
     } catch (error) {
@@ -989,13 +1031,15 @@ export class RagService {
           'text',
           'keywords',
           'article_title',
+          'article_path',
           'section_title',
+          'section_anchor',
           'full_title',
           'hierarchy',
           'document_id',
           'content_type',
           'source',
-          'article_path',
+          'archive_title',
         ],
         with_vector: false,
       })
@@ -1003,9 +1047,12 @@ export class RagService {
       for (const point of scrollResult.points) {
         const payload = (point.payload ?? {}) as Record<string, unknown>
         const text = typeof payload.text === 'string' ? payload.text : ''
-        const title = typeof payload.full_title === 'string'
-          ? payload.full_title
-          : typeof payload.article_title === 'string' ? payload.article_title : undefined
+        const title =
+          typeof payload.full_title === 'string'
+            ? payload.full_title
+            : typeof payload.article_title === 'string'
+              ? payload.article_title
+              : undefined
         const keywords = typeof payload.keywords === 'string' ? payload.keywords : ''
 
         if (text || title) {
@@ -1125,9 +1172,7 @@ export class RagService {
    * Uses greedy selection: for each result, apply 0.85^n penalty where n is the
    * number of results already selected from the same source.
    */
-  private applySourceDiversity(
-    results: Array<RerankedRAGResult>
-  ) {
+  private applySourceDiversity(results: Array<RerankedRAGResult>) {
     const sourceCounts = new Map<string, number>()
     const DIVERSITY_PENALTY = 0.85
 
@@ -1214,17 +1259,19 @@ export class RagService {
       logger.info(`[RAG] Deleted all points for source: ${source}`)
 
       /** Delete the physical file only if it lives inside the uploads directory.
-      * resolve() normalises path traversal sequences (e.g. "/../..") before the
-      * check to prevent path traversal vulns
-      * The trailing sep is to ensure a prefix like "kb_uploads_{something_incorrect}" can't slip through.
-      */
+       * resolve() normalises path traversal sequences (e.g. "/../..") before the
+       * check to prevent path traversal vulns
+       * The trailing sep is to ensure a prefix like "kb_uploads_{something_incorrect}" can't slip through.
+       */
       const uploadsAbsPath = join(process.cwd(), RagService.UPLOADS_STORAGE_PATH)
       const resolvedSource = resolve(source)
       if (resolvedSource.startsWith(uploadsAbsPath + sep)) {
         await deleteFileIfExists(resolvedSource)
         logger.info(`[RAG] Deleted uploaded file from disk: ${resolvedSource}`)
       } else {
-        logger.warn(`[RAG] File was removed from knowledge base but doesn't live in Nomad's uploads directory, so it can't be safely removed. Skipping deletion of physical file...`)
+        logger.warn(
+          `[RAG] File was removed from knowledge base but doesn't live in Nomad's uploads directory, so it can't be safely removed. Skipping deletion of physical file...`
+        )
       }
 
       return { success: true, message: 'File removed from knowledge base.' }
@@ -1242,7 +1289,10 @@ export class RagService {
       const alreadyEmbeddedRaw = await KVStore.getValue('rag.docsEmbedded')
       if (alreadyEmbeddedRaw && !force) {
         logger.info('[RAG] Nomad docs have already been discovered and queued. Skipping.')
-        return { success: true, message: 'Nomad docs have already been discovered and queued. Skipping.' }
+        return {
+          success: true,
+          message: 'Nomad docs have already been discovered and queued. Skipping.',
+        }
       }
 
       const filesToEmbed: Array<{ path: string; source: string }> = []
@@ -1274,17 +1324,17 @@ export class RagService {
           })
           logger.info(`[RAG] Successfully dispatched job for ${fileInfo.source}`)
         } catch (fileError) {
-          logger.error(
-            `[RAG] Error dispatching job for file ${fileInfo.source}:`,
-            fileError
-          )
+          logger.error(`[RAG] Error dispatching job for file ${fileInfo.source}:`, fileError)
         }
       }
 
       // Update KV store to mark docs as discovered so we don't redo this unnecessarily
       await KVStore.setValue('rag.docsEmbedded', true)
 
-      return { success: true, message: `Nomad docs discovery completed. Dispatched ${filesToEmbed.length} embedding jobs.` }
+      return {
+        success: true,
+        message: `Nomad docs discovery completed. Dispatched ${filesToEmbed.length} embedding jobs.`,
+      }
     } catch (error) {
       logger.error('Error discovering Nomad docs:', error)
       return { success: false, message: 'Error discovering Nomad docs.' }
@@ -1328,7 +1378,9 @@ export class RagService {
         logger.debug(`[RAG] Found ${kbContents.length} files in ${RagService.UPLOADS_STORAGE_PATH}`)
       } catch (error) {
         if (error.code === 'ENOENT') {
-          logger.debug(`[RAG] ${RagService.UPLOADS_STORAGE_PATH} directory does not exist, skipping`)
+          logger.debug(
+            `[RAG] ${RagService.UPLOADS_STORAGE_PATH} directory does not exist, skipping`
+          )
         } else {
           throw error
         }

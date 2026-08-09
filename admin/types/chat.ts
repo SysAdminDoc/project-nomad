@@ -1,3 +1,9 @@
+import type { RAGCitation } from './rag.js'
+
+export type ChatMessageMetadata = {
+  citations?: RAGCitation[]
+}
+
 export interface ChatMessage {
   id: string
   role: 'system' | 'user' | 'assistant'
@@ -7,6 +13,7 @@ export interface ChatMessage {
   thinking?: string
   isThinking?: boolean
   thinkingDuration?: number
+  metadata?: ChatMessageMetadata
 }
 
 export interface ChatSession {

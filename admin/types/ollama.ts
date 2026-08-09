@@ -1,3 +1,5 @@
+import type { RAGCitation } from './rag.js'
+
 export type NomadOllamaModel = {
   id: string
   name: string
@@ -93,4 +95,5 @@ export type NomadChatResponse = {
   message: { content: string; thinking?: string }
   done: boolean
   model: string
+  citations?: RAGCitation[]
 }

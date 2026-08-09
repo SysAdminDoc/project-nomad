@@ -81,7 +81,7 @@ export default function Chat({
   })
 
   const rewriteModelAvailable = useMemo(() => {
-    return installedModels.some(model => model.name === DEFAULT_QUERY_REWRITE_MODEL)
+    return installedModels.some((model) => model.name === DEFAULT_QUERY_REWRITE_MODEL)
   }, [installedModels])
 
   const deleteAllSessionsMutation = useMutation({
@@ -111,6 +111,7 @@ export default function Chat({
         role: 'assistant',
         content: data.message?.content || 'Sorry, I could not generate a response.',
         timestamp: new Date(),
+        ...(data.citations?.length ? { metadata: { citations: data.citations } } : {}),
       }
 
       setMessages((prev) => [...prev, assistantMessage])
@@ -190,6 +191,7 @@ export default function Chat({
             id: m.id,
             role: m.role,
             content: m.content,
+            metadata: m.metadata,
             timestamp: new Date(m.timestamp),
           }))
         )
@@ -253,8 +255,13 @@ export default function Chat({
 
         try {
           await api.streamChatMessage(
-            { model: selectedModel || 'llama3.2', messages: chatMessages, stream: true, sessionId: sessionId ? Number(sessionId) : undefined },
-            (chunkContent, chunkThinking, done) => {
+            {
+              model: selectedModel || 'llama3.2',
+              messages: chatMessages,
+              stream: true,
+              sessionId: sessionId ? Number(sessionId) : undefined,
+            },
+            (chunkContent, chunkThinking, done, citations) => {
               if (chunkThinking.length > 0 && thinkingStartTime === null) {
                 thinkingStartTime = Date.now()
               }
@@ -272,26 +279,31 @@ export default function Chat({
                     isStreaming: true,
                     isThinking: chunkThinking.length > 0 && chunkContent.length === 0,
                     thinkingDuration: undefined,
+                    ...(citations?.length ? { metadata: { citations } } : {}),
                   },
                 ])
               } else {
                 if (isThinkingPhase && chunkContent.length > 0) {
                   isThinkingPhase = false
                   if (thinkingStartTime !== null) {
-                    thinkingDuration = Math.max(1, Math.round((Date.now() - thinkingStartTime) / 1000))
+                    thinkingDuration = Math.max(
+                      1,
+                      Math.round((Date.now() - thinkingStartTime) / 1000)
+                    )
                   }
                 }
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantMsgId
                       ? {
-                        ...m,
-                        content: m.content + chunkContent,
-                        thinking: (m.thinking ?? '') + chunkThinking,
-                        isStreaming: !done,
-                        isThinking: isThinkingPhase,
-                        thinkingDuration: thinkingDuration ?? undefined,
-                      }
+                          ...m,
+                          content: m.content + chunkContent,
+                          thinking: (m.thinking ?? '') + chunkThinking,
+                          isStreaming: !done,
+                          isThinking: isThinkingPhase,
+                          thinkingDuration: thinkingDuration ?? undefined,
+                          ...(citations?.length ? { metadata: { citations } } : {}),
+                        }
                       : m
                   )
                 )
@@ -306,9 +318,7 @@ export default function Chat({
             setMessages((prev) => {
               const hasAssistantMsg = prev.some((m) => m.id === assistantMsgId)
               if (hasAssistantMsg) {
-                return prev.map((m) =>
-                  m.id === assistantMsgId ? { ...m, isStreaming: false } : m
-                )
+                return prev.map((m) => (m.id === assistantMsgId ? { ...m, isStreaming: false } : m))
               }
               return [
                 ...prev,
@@ -329,9 +339,7 @@ export default function Chat({
         if (fullContent && sessionId) {
           // Ensure the streaming cursor is removed
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId ? { ...m, isStreaming: false } : m
-            )
+            prev.map((m) => (m.id === assistantMsgId ? { ...m, isStreaming: false } : m))
           )
 
           // Refresh sessions to pick up backend-persisted messages and title
@@ -400,7 +408,8 @@ export default function Chat({
                 >
                   {installedModels.map((model) => (
                     <option key={model.name} value={model.name}>
-                      {model.name}{model.size > 0 ? ` (${formatBytes(model.size)})` : ''}
+                      {model.name}
+                      {model.size > 0 ? ` (${formatBytes(model.size)})` : ''}
                     </option>
                   ))}
                 </select>
