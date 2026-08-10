@@ -17,6 +17,12 @@ import { UsePageProps } from '../../types/system'
 const appName = import.meta.env.VITE_APP_NAME || 'Project N.O.M.A.D.'
 const queryClient = new QueryClient()
 
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => undefined)
+  })
+}
+
 // Patch the global crypto object for non-HTTPS/localhost contexts
 if (!window.crypto?.randomUUID) {
   // @ts-ignore
@@ -40,11 +46,16 @@ createInertiaApp({
     createRoot(el).render(
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
-          <TransmitProvider baseUrl={window.location.origin} enableLogging={environment === 'development'}>
+          <TransmitProvider
+            baseUrl={window.location.origin}
+            enableLogging={environment === 'development'}
+          >
             <NotificationsProvider>
               <ModalsProvider>
                 <App {...props} />
-                {showDevtools && <ReactQueryDevtools initialIsOpen={false} buttonPosition='bottom-left' />}
+                {showDevtools && (
+                  <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
+                )}
               </ModalsProvider>
             </NotificationsProvider>
           </TransmitProvider>

@@ -25,6 +25,7 @@ test.group('guest kiosk utilities', () => {
 
   test('only exposes map data files when maps are enabled', ({ assert }) => {
     assert.isTrue(isGuestKioskStaticPathAllowed('/assets/app.js', []))
+    assert.isTrue(isGuestKioskStaticPathAllowed('/favicon-192x192.png', []))
     assert.isTrue(isGuestKioskStaticPathAllowed('/pmtiles/region.pmtiles', ['maps']))
     assert.isFalse(isGuestKioskStaticPathAllowed('/pmtiles/region.pmtiles', ['docs']))
   })

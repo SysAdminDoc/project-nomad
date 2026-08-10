@@ -11,6 +11,7 @@ All notable changes to project-nomad will be documented in this file.
 - Added Guest Kiosk mode for classroom deployments, with server-side tool allowlisting and no admin UI.
 - Added ARM64-first installation and build support, including native architecture detection, ARM64 Dockerfile dependencies, and Jetson-aware NVIDIA setup guidance.
 - Added a rootless Podman installation path using the Docker-compatible API, runtime-aware lifecycle helpers, and configurable compatibility sockets.
+- Added PWA installability for the Command Center with a home-screen manifest, theme metadata, and a static-asset service worker.
 - Added federated search across installed Kiwix, Kolibri, FlatNotes, and Qdrant sources with partial-service status reporting.
 - Added BM25 lexical retrieval and dense-vector score fusion for ZIM article chunks indexed in Qdrant.
 - Added scheduled Kiwix catalog update checks and one-click in-place ZIM refreshes from the Content Explorer.

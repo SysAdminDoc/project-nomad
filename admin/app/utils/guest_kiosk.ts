@@ -181,6 +181,7 @@ export function isGuestKioskStaticPathAllowed(
     path.startsWith('/assets/') ||
     path === '/project_nomad_logo.webp' ||
     path === '/favicon.ico' ||
+    path.startsWith('/favicon-') ||
     path === '/manifest.webmanifest' ||
     path === '/sw.js' ||
     path === '/robots.txt'

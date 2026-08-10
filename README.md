@@ -74,6 +74,14 @@ management containers as `/var/run/docker.sock`. Updates and lifecycle helper sc
 selected runtime from the installed compose file. GPU acceleration with Podman requires a
 host-configured CDI device; CPU inference works without additional runtime configuration.
 
+### Install the Command Center as an App
+
+The Command Center publishes a web app manifest and service worker, so supported browsers can
+install it to a tablet or desktop home screen. Open the Command Center over HTTPS or on the local
+device, use the browser's **Install app** or **Add to Home Screen** action, and launch it from the
+new icon. The service worker caches only static shell assets; API responses, storage, and map tiles
+remain network-backed so content and credentials are not cached by the app shell.
+
 ### Advanced Installation
 
 For more control over the installation process, copy and paste the [Docker Compose template](https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/management_compose.yaml) into a `docker-compose.yml` file and customize it to your liking (be sure to replace any placeholders with your actual values). Then, run `docker compose up -d` to start the Command Center and its dependencies. For rootless Podman, set `NOMAD_CONTAINER_RUNTIME=podman` and `NOMAD_CONTAINER_SOCKET=/run/user/<uid>/podman/podman.sock`, enable `systemctl --user enable --now podman.socket`, and run the equivalent `podman compose up -d`. Note: this method is recommended for advanced users only, as it requires familiarity with the selected container runtime and manual configuration before starting.
