@@ -4,6 +4,8 @@ All notable changes to project-nomad will be documented in this file.
 
 ## [Unreleased]
 
+## Version 1.32.0 - August 9, 2026
+
 - Added first-boot hardware readiness scoring in Easy Setup, including SSD/SMART health, RAM, GPU VRAM, and actionable installation suggestions.
 - Added a System Information health dashboard with per-tool storage, per-container RAM, uptime, and last ZIM update details.
 - Added Backup & Restore for Nomad storage and MySQL data, with second-disk archives and optional rclone remote upload/restore.

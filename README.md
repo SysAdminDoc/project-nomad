@@ -10,6 +10,7 @@
 [![Website](https://img.shields.io/badge/Website-projectnomad.us-blue)](https://www.projectnomad.us)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2)](https://discord.com/invite/crosstalksolutions)
 [![Benchmark](https://img.shields.io/badge/Benchmark-Leaderboard-green)](https://benchmark.projectnomad.us)
+[![Version](https://img.shields.io/badge/version-1.32.0-blue)](https://github.com/Crosstalk-Solutions/project-nomad/releases/tag/v1.32.0)
 
 </div>
 
@@ -52,7 +53,7 @@ contract as the release builder:
 ```bash
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --build-arg VERSION=1.31.0 \
+  --build-arg VERSION=1.32.0 \
   -t ghcr.io/crosstalk-solutions/project-nomad:latest \
   --push .
 ```
