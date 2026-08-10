@@ -22,7 +22,7 @@ services:
     volumes:
       - /opt/project-nomad/storage:/app/storage # If you change the default storage path (/opt/project-nomad/storage), make sure to update the disk-collector config as well!
       - ${NOMAD_BACKUP_PATH:-/opt/project-nomad/backups}:/backups # Keep backups on a separate disk when possible; change the host path in the compose .env file.
-      - /var/run/docker.sock:/var/run/docker.sock # Allows the admin service to communicate with the Host's Docker daemon
+      - ${NOMAD_CONTAINER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock # Docker or rootless Podman compatibility socket
       - ${NOMAD_RCLONE_CONFIG_DIR:-/opt/project-nomad/rclone}:/config/rclone:ro # Optional rclone.conf directory for remote backups.
       - nomad-update-shared:/app/update-shared # Shared volume for update communication
     environment:
@@ -56,6 +56,8 @@ services:
       # NOMAD_GUEST_TOOLS=chat,maps,docs,kiwix,kolibri,cyberchef,flatnotes.
       - NOMAD_GUEST_MODE=${NOMAD_GUEST_MODE:-false}
       - NOMAD_GUEST_TOOLS=${NOMAD_GUEST_TOOLS:-chat,maps,docs}
+      - NOMAD_CONTAINER_RUNTIME=${NOMAD_CONTAINER_RUNTIME:-docker}
+      - NOMAD_DOCKER_SOCKET=/var/run/docker.sock
     depends_on:
       mysql:
         condition: service_healthy
@@ -74,7 +76,7 @@ services:
     ports:
       - "9999:8080"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock # Allows Dozzle to read logs from the Host's Docker daemon
+      - ${NOMAD_CONTAINER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock # Docker or rootless Podman compatibility socket
     environment:
       - DOZZLE_ENABLE_ACTIONS=false # Disabled — unauthenticated container stop/restart on LAN
       - DOZZLE_ENABLE_SHELL=false  # Disabled — shell access + Docker socket = privilege escalation
@@ -113,7 +115,7 @@ services:
     container_name: nomad_updater
     restart: unless-stopped
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock # Allows communication with the Host's Docker daemon
+      - ${NOMAD_CONTAINER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock # Docker or rootless Podman compatibility socket
       - /opt/project-nomad:/opt/project-nomad # Writable access required so the updater can set the correct image tag in compose.yml. This needs to be the same location that the compose file is located at on the host for the updater to work correctly
       - nomad-update-shared:/shared # Shared volume for communication with admin container
   disk-collector:

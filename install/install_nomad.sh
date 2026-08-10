@@ -38,6 +38,8 @@ script_option_debug='true'
 accepted_terms='false'
 local_ip_address=''
 nomad_host_arch=''
+nomad_container_runtime="${NOMAD_CONTAINER_RUNTIME:-docker}"
+nomad_container_socket=''
 
 ###################################################################################################################################################################################################
 #                                                                                                                                                                                                 #
@@ -234,7 +236,71 @@ ensure_docker_installed() {
   fi
 }
 
+ensure_podman_installed() {
+  if ! command -v podman &> /dev/null; then
+    echo -e "${YELLOW}#${RESET} Podman not found. Installing rootless Podman...\\n"
+    sudo apt-get update
+    sudo apt-get install -y podman
+  fi
+
+  if ! command -v podman &> /dev/null; then
+    echo -e "${RED}#${RESET} Podman installation failed. Please install Podman and try again."
+    exit 1
+  fi
+
+  if ! podman compose version &> /dev/null && ! command -v podman-compose &> /dev/null; then
+    echo -e "${YELLOW}#${RESET} Podman Compose is not available. Installing the Debian podman-compose helper...\\n"
+    sudo apt-get update
+    sudo apt-get install -y podman-compose
+  fi
+
+  if ! podman compose version &> /dev/null && ! command -v podman-compose &> /dev/null; then
+    echo -e "${RED}#${RESET} Podman Compose is not available. Install podman-compose and try again."
+    exit 1
+  fi
+
+  echo -e "${GREEN}#${RESET} Podman and a compose provider are available.\\n"
+}
+
+configure_container_runtime() {
+  case "${nomad_container_runtime,,}" in
+    docker)
+      nomad_container_runtime='docker'
+      nomad_container_socket='/var/run/docker.sock'
+      ensure_docker_installed
+      ;;
+    podman)
+      nomad_container_runtime='podman'
+      ensure_podman_installed
+      nomad_container_socket="/run/user/$(id -u)/podman/podman.sock"
+      if command -v loginctl &> /dev/null; then
+        sudo loginctl enable-linger "$(whoami)" 2>/dev/null || true
+      fi
+      if ! systemctl --user enable --now podman.socket 2>/dev/null; then
+        echo -e "${RED}#${RESET} Could not enable the rootless Podman socket. Run 'systemctl --user enable --now podman.socket' and try again."
+        exit 1
+      fi
+      echo -e "${GREEN}#${RESET} Rootless Podman socket enabled at ${nomad_container_socket}.\\n"
+      ;;
+    *)
+      echo -e "${RED}#${RESET} Unsupported NOMAD_CONTAINER_RUNTIME '${nomad_container_runtime}'. Use docker or podman."
+      exit 1
+      ;;
+  esac
+  export NOMAD_CONTAINER_RUNTIME="${nomad_container_runtime}"
+  export NOMAD_CONTAINER_SOCKET="${nomad_container_socket}"
+}
+
 check_docker_compose() {
+  if [[ "${nomad_container_runtime}" == 'podman' ]]; then
+    if podman compose version &>/dev/null || command -v podman-compose &>/dev/null; then
+      echo -e "${GREEN}#${RESET} Podman Compose is available.\\n"
+      return 0
+    fi
+    echo -e "${RED}#${RESET} Podman Compose is not installed or not available."
+    exit 1
+  fi
+
   # Check if 'docker compose' (v2 plugin) is available
   if ! docker compose version &>/dev/null; then
     echo -e "${RED}#${RESET} Docker Compose v2 is not installed or not available as a Docker plugin."
@@ -244,24 +310,28 @@ check_docker_compose() {
   fi
 }
 
-verify_docker_architecture() {
-  local docker_arch=''
-  docker_arch=$(docker info --format '{{.Architecture}}' 2>/dev/null || true)
-  if [[ -z "${docker_arch}" ]]; then
-    echo -e "${YELLOW}#${RESET} Could not read Docker's architecture; continuing with ${nomad_host_arch}.\n"
+verify_runtime_architecture() {
+  local runtime_arch=''
+  if [[ "${nomad_container_runtime}" == 'podman' ]]; then
+    runtime_arch=$(podman info --format '{{.Host.Arch}}' 2>/dev/null || true)
+  else
+    runtime_arch=$(docker info --format '{{.Architecture}}' 2>/dev/null || true)
+  fi
+  if [[ -z "${runtime_arch}" ]]; then
+    echo -e "${YELLOW}#${RESET} Could not read ${nomad_container_runtime}'s architecture; continuing with ${nomad_host_arch}.\\n"
     return 0
   fi
 
-  case "${docker_arch,,}" in
-    x86_64|amd64|x64) docker_arch='amd64' ;;
-    aarch64|arm64|armv8|armv8l) docker_arch='arm64' ;;
-    armv7l|armhf|arm) docker_arch='arm' ;;
+  case "${runtime_arch,,}" in
+    x86_64|amd64|x64) runtime_arch='amd64' ;;
+    aarch64|arm64|armv8|armv8l) runtime_arch='arm64' ;;
+    armv7l|armhf|arm) runtime_arch='arm' ;;
   esac
 
-  if [[ "${docker_arch}" != "${nomad_host_arch}" ]]; then
-    echo -e "${YELLOW}#${RESET} Docker reports ${docker_arch} while the host reports ${nomad_host_arch}. Docker may be running through emulation.\n"
+  if [[ "${runtime_arch}" != "${nomad_host_arch}" ]]; then
+    echo -e "${YELLOW}#${RESET} ${nomad_container_runtime} reports ${runtime_arch} while the host reports ${nomad_host_arch}. The runtime may be using emulation.\n"
   else
-    echo -e "${GREEN}#${RESET} Docker architecture verified: ${docker_arch}.\n"
+    echo -e "${GREEN}#${RESET} ${nomad_container_runtime} architecture verified: ${runtime_arch}.\n"
   fi
 }
 
@@ -271,11 +341,16 @@ setup_nvidia_container_toolkit() {
 
   if [[ "${nomad_host_arch}" == 'arm64' ]]; then
     echo -e "${YELLOW}#${RESET} ARM64 host detected. NVIDIA runtime setup is managed by JetPack on Jetson devices; skipping the x86 NVIDIA repository setup.\n"
-    if command -v nvidia-container-runtime &> /dev/null || docker info 2>/dev/null | grep -qi nvidia; then
+    if command -v nvidia-container-runtime &> /dev/null || ${nomad_container_runtime} info 2>/dev/null | grep -qi nvidia; then
       echo -e "${GREEN}#${RESET} An ARM64 NVIDIA container runtime is already available.\n"
     else
       echo -e "${YELLOW}#${RESET} No ARM64 NVIDIA runtime detected. Raspberry Pi and CPU-only ARM64 systems will use CPU inference.\n"
     fi
+    return 0
+  fi
+
+  if [[ "${nomad_container_runtime}" == 'podman' ]]; then
+    echo -e "${YELLOW}#${RESET} Podman selected. NVIDIA GPU access requires a host-configured CDI device; skipping Docker-specific toolkit configuration.\\n"
     return 0
   fi
   
@@ -486,6 +561,8 @@ download_management_compose_file() {
   sed -i "s|DB_PASSWORD=replaceme|DB_PASSWORD=${db_user_password}|g" "$compose_file_path"
   sed -i "s|MYSQL_ROOT_PASSWORD=replaceme|MYSQL_ROOT_PASSWORD=${db_root_password}|g" "$compose_file_path"
   sed -i "s|MYSQL_PASSWORD=replaceme|MYSQL_PASSWORD=${db_user_password}|g" "$compose_file_path"
+  sed -i "s|\${NOMAD_CONTAINER_RUNTIME:-docker}|${nomad_container_runtime}|g" "$compose_file_path"
+  sed -i "s|\${NOMAD_CONTAINER_SOCKET:-/var/run/docker.sock}|${nomad_container_socket}|g" "$compose_file_path"
   
   echo -e "${GREEN}#${RESET} Docker compose file configured successfully.\\n"
 }
@@ -518,8 +595,13 @@ download_helper_scripts() {
 }
 
 start_management_containers() {
-  echo -e "${YELLOW}#${RESET} Starting management containers using docker compose...\\n"
-  if ! sudo docker compose -p project-nomad -f "${NOMAD_DIR}/compose.yml" up -d; then
+  echo -e "${YELLOW}#${RESET} Starting management containers using ${nomad_container_runtime} compose...\\n"
+  if [[ "${nomad_container_runtime}" == 'podman' ]]; then
+    if ! (podman compose -p project-nomad -f "${NOMAD_DIR}/compose.yml" up -d 2>/dev/null || podman-compose -p project-nomad -f "${NOMAD_DIR}/compose.yml" up -d); then
+      echo -e "${RED}#${RESET} Failed to start management containers. Please check the logs and try again."
+      exit 1
+    fi
+  elif ! sudo docker compose -p project-nomad -f "${NOMAD_DIR}/compose.yml" up -d; then
     echo -e "${RED}#${RESET} Failed to start management containers. Please check the logs and try again."
     exit 1
   fi
@@ -563,11 +645,11 @@ verify_gpu_setup() {
     echo -e "${YELLOW}○${RESET} NVIDIA Container Toolkit not installed\\n"
   fi
   
-  # Check if Docker has NVIDIA runtime
-  if docker info 2>/dev/null | grep -q "nvidia"; then
-    echo -e "${GREEN}✓${RESET} Docker NVIDIA runtime configured\\n"
+  # Check if the selected container runtime has NVIDIA support
+  if ${nomad_container_runtime} info 2>/dev/null | grep -q "nvidia"; then
+    echo -e "${GREEN}✓${RESET} ${nomad_container_runtime} NVIDIA runtime configured\\n"
   else
-    echo -e "${YELLOW}○${RESET} Docker NVIDIA runtime not detected\\n"
+    echo -e "${YELLOW}○${RESET} ${nomad_container_runtime} NVIDIA runtime not detected\\n"
   fi
   
   # Check for AMD GPU
@@ -580,13 +662,17 @@ verify_gpu_setup() {
   echo -e "${YELLOW}===========================================${RESET}\\n"
   
   # Summary
-  if command -v nvidia-smi &> /dev/null && docker info 2>/dev/null | grep -q "nvidia"; then
+  if command -v nvidia-smi &> /dev/null && ${nomad_container_runtime} info 2>/dev/null | grep -q "nvidia"; then
     echo -e "${GREEN}#${RESET} GPU acceleration is properly configured! The AI Assistant will use your GPU.\\n"
   else
     echo -e "${YELLOW}#${RESET} GPU acceleration not detected. The AI Assistant will run in CPU-only mode.\\n"
-    if command -v nvidia-smi &> /dev/null && ! docker info 2>/dev/null | grep -q "nvidia"; then
-      echo -e "${YELLOW}#${RESET} Tip: Your GPU is detected but Docker runtime is not configured.\\n"
-      echo -e "${YELLOW}#${RESET} Try restarting Docker: ${WHITE_R}sudo systemctl restart docker${RESET}\\n"
+    if command -v nvidia-smi &> /dev/null && ! ${nomad_container_runtime} info 2>/dev/null | grep -q "nvidia"; then
+      echo -e "${YELLOW}#${RESET} Tip: Your GPU is detected but the ${nomad_container_runtime} runtime is not configured.\\n"
+      if [[ "${nomad_container_runtime}" == 'podman' ]]; then
+        echo -e "${YELLOW}#${RESET} Configure a CDI device for Podman and retry the container start.\\n"
+      else
+        echo -e "${YELLOW}#${RESET} Try restarting Docker: ${WHITE_R}sudo systemctl restart docker${RESET}\\n"
+      fi
     fi
   fi
 }
@@ -617,9 +703,9 @@ check_is_debug_mode
 # Main install
 get_install_confirmation
 accept_terms
-ensure_docker_installed
+configure_container_runtime
 check_docker_compose
-verify_docker_architecture
+verify_runtime_architecture
 setup_nvidia_container_toolkit
 get_local_ip
 create_nomad_directory

@@ -28,6 +28,36 @@ GREEN='\033[1;32m' # Light Green.
 #                                                                                                                                                                                                 #
 ###################################################################################################################################################################################################
 
+NOMAD_DIR="/opt/project-nomad"
+COMPOSE_FILE="${NOMAD_DIR}/compose.yml"
+
+resolve_runtime() {
+  local configured_runtime="${NOMAD_CONTAINER_RUNTIME:-}"
+  if [[ -z "$configured_runtime" && -f "$COMPOSE_FILE" ]]; then
+    configured_runtime=$(grep -E 'NOMAD_CONTAINER_RUNTIME=' "$COMPOSE_FILE" 2>/dev/null | sed -E 's/.*NOMAD_CONTAINER_RUNTIME=([^[:space:]}]+).*/\1/' | head -n1)
+  fi
+  if [[ "$configured_runtime" == 'podman' ]]; then
+    echo 'podman'
+  else
+    echo 'docker'
+  fi
+}
+
+run_compose() {
+  if [[ "$(resolve_runtime)" == 'podman' ]]; then
+    if podman compose version &>/dev/null; then
+      podman compose "$@"
+    elif command -v podman-compose &>/dev/null; then
+      podman-compose "$@"
+    else
+      echo -e "${RED}#${RESET} Podman Compose is not installed or not available."
+      return 1
+    fi
+  else
+    docker compose "$@"
+  fi
+}
+
 check_has_sudo() {
   if sudo -n true 2>/dev/null; then
     echo -e "${GREEN}#${RESET} User has sudo permissions.\\n"
@@ -78,9 +108,32 @@ get_update_confirmation(){
   esac
 }
 
-ensure_docker_installed_and_running() {
+ensure_container_runtime_and_running() {
+  local runtime
+  runtime=$(resolve_runtime)
+
+  if [[ "$runtime" == 'podman' ]]; then
+    if ! command -v podman &>/dev/null; then
+      echo -e "${RED}#${RESET} Podman is not installed. Run the installer with NOMAD_CONTAINER_RUNTIME=podman first."
+      exit 1
+    fi
+    if ! podman compose version &>/dev/null && ! command -v podman-compose &>/dev/null; then
+      echo -e "${RED}#${RESET} Podman Compose is not installed or not available."
+      exit 1
+    fi
+    if ! systemctl --user is-active --quiet podman.socket; then
+      echo -e "${YELLOW}#${RESET} Rootless Podman socket is not running. Attempting to start it..."
+      systemctl --user start podman.socket 2>/dev/null || true
+    fi
+    if ! podman info &>/dev/null; then
+      echo -e "${RED}#${RESET} Rootless Podman is not available. Start Podman and try again."
+      exit 1
+    fi
+    return 0
+  fi
+
   if ! command -v docker &> /dev/null; then
-    echo -e "${RED}#${RESET} Docker is not installed. This is unexpected, as Project N.O.M.A.D. requires Docker to run. Did you mean to use the install script instead of the update script?"
+    echo -e "${RED}#${RESET} Docker is not installed. This is unexpected, as Project N.O.M.A.D. requires a container runtime. Did you mean to use the install script instead of the update script?"
     exit 1
   fi
 
@@ -95,11 +148,9 @@ ensure_docker_installed_and_running() {
 }
 
 check_docker_compose() {
-  # Check if 'docker compose' (v2 plugin) is available
-  if ! docker compose version &>/dev/null; then
-    echo -e "${RED}#${RESET} Docker Compose v2 is not installed or not available as a Docker plugin."
-    echo -e "${YELLOW}#${RESET} This script requires 'docker compose' (v2), not 'docker-compose' (v1)."
-    echo -e "${YELLOW}#${RESET} Please read the Docker documentation at https://docs.docker.com/compose/install/ for instructions on how to install Docker Compose v2."
+  if ! run_compose version &>/dev/null; then
+    echo -e "${RED}#${RESET} Compose is not installed or not available for the configured container runtime."
+    echo -e "${YELLOW}#${RESET} Install Docker Compose v2 or the Podman Compose provider, then try again."
     exit 1
   fi
 }
@@ -112,15 +163,17 @@ ensure_docker_compose_file_exists() {
 }
 
 force_recreate() {
-  echo -e "${YELLOW}#${RESET} Pulling the latest Docker images..."
-  if ! docker compose -p project-nomad -f /opt/project-nomad/compose.yml pull; then
-    echo -e "${RED}#${RESET} Failed to pull the latest Docker images. Please check your network connection and the Docker registry status, then try again."
+  local runtime
+  runtime=$(resolve_runtime)
+  echo -e "${YELLOW}#${RESET} Pulling the latest ${runtime} images..."
+  if ! run_compose -p project-nomad -f "$COMPOSE_FILE" pull; then
+    echo -e "${RED}#${RESET} Failed to pull the latest images. Please check your network connection and the container registry status, then try again."
     exit 1
   fi
   
   echo -e "${YELLOW}#${RESET} Forcing recreation of containers..."
-  if ! docker compose -p project-nomad -f /opt/project-nomad/compose.yml up -d --force-recreate; then
-    echo -e "${RED}#${RESET} Failed to recreate containers. Please check the Docker logs for more details."
+  if ! run_compose -p project-nomad -f "$COMPOSE_FILE" up -d --force-recreate; then
+    echo -e "${RED}#${RESET} Failed to recreate containers. Please check the container runtime logs for more details."
     exit 1
   fi
 }
@@ -154,7 +207,7 @@ check_has_sudo
 
 # Main update
 get_update_confirmation
-ensure_docker_installed_and_running
+ensure_container_runtime_and_running
 check_docker_compose
 ensure_docker_compose_file_exists
 force_recreate

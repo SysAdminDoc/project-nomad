@@ -82,16 +82,55 @@ check_has_sudo() {
   fi
 }
 
-check_docker_running() {
-  if ! command -v docker &>/dev/null; then
-    echo -e "${RED}#${RESET} Docker is not installed. Cannot proceed."
+resolve_runtime() {
+  local configured_runtime="${NOMAD_CONTAINER_RUNTIME:-}"
+  if [[ -z "$configured_runtime" && -f "$COMPOSE_FILE" ]]; then
+    configured_runtime=$(grep -E 'NOMAD_CONTAINER_RUNTIME=' "$COMPOSE_FILE" 2>/dev/null | sed -E 's/.*NOMAD_CONTAINER_RUNTIME=([^[:space:]}]+).*/\1/' | head -n1)
+  fi
+  if [[ "$configured_runtime" == 'podman' ]]; then
+    echo 'podman'
+  else
+    echo 'docker'
+  fi
+}
+
+run_compose() {
+  if [[ "$(resolve_runtime)" == 'podman' ]]; then
+    if podman compose version &>/dev/null; then
+      podman compose "$@"
+    elif command -v podman-compose &>/dev/null; then
+      podman-compose "$@"
+    else
+      echo -e "${RED}#${RESET} Podman Compose is not installed or not available."
+      return 1
+    fi
+  else
+    docker compose "$@"
+  fi
+}
+
+check_container_runtime() {
+  local runtime
+  runtime=$(resolve_runtime)
+  if ! command -v "$runtime" &>/dev/null; then
+    echo -e "${RED}#${RESET} ${runtime} is not installed. Cannot proceed."
     exit 1
   fi
-  if ! systemctl is-active --quiet docker; then
+
+  if [[ "$runtime" == 'podman' ]]; then
+    if ! podman compose version &>/dev/null && ! command -v podman-compose &>/dev/null; then
+      echo -e "${RED}#${RESET} Podman Compose is not installed or not available."
+      exit 1
+    fi
+    if ! systemctl --user is-active --quiet podman.socket; then
+      echo -e "${YELLOW}#${RESET} Rootless Podman socket is not running. Attempting to start it..."
+      systemctl --user start podman.socket 2>/dev/null || true
+    fi
+  elif ! systemctl is-active --quiet docker; then
     echo -e "${RED}#${RESET} Docker is not running. Please start Docker and try again."
     exit 1
   fi
-  echo -e "${GREEN}#${RESET} Docker is running.\n"
+  echo -e "${GREEN}#${RESET} ${runtime} is available.\n"
 }
 
 check_compose_file() {
@@ -169,7 +208,7 @@ download_updated_sidecar_files() {
 
 rebuild_sidecar() {
   echo -e "${YELLOW}#${RESET} Rebuilding the updater container (this may take a moment)..."
-  if ! docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" build updater; then
+  if ! run_compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" build updater; then
     echo -e "${RED}#${RESET} Failed to rebuild the updater container. See output above for details."
     exit 1
   fi
@@ -177,17 +216,19 @@ rebuild_sidecar() {
 }
 
 restart_sidecar() {
+  local runtime
+  runtime=$(resolve_runtime)
   echo -e "${YELLOW}#${RESET} Stopping and removing existing updater containers..."
 
   # Stop and remove via compose first (handles the compose-tracked container)
-  docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" stop updater >> /dev/null 2>&1 || true
-  docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" rm -f updater >> /dev/null 2>&1 || true
+  run_compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" stop updater >> /dev/null 2>&1 || true
+  run_compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" rm -f updater >> /dev/null 2>&1 || true
 
   # Force-remove any stale container still holding the name (e.g. hash-prefixed remnants)
-  docker rm -f nomad_updater >> /dev/null 2>&1 || true
+  "$runtime" rm -f nomad_updater >> /dev/null 2>&1 || true
 
   echo -e "${YELLOW}#${RESET} Starting the updated updater container..."
-  if ! docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" up -d updater; then
+  if ! run_compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" up -d updater; then
     echo -e "${RED}#${RESET} Failed to start the updater container."
     exit 1
   fi
@@ -195,13 +236,15 @@ restart_sidecar() {
 }
 
 verify_sidecar_running() {
+  local runtime
+  runtime=$(resolve_runtime)
   sleep 3
   # Use exact name match to avoid false positives from hash-prefixed stale containers
-  if docker ps --filter "name=^nomad_updater$" --filter "status=running" --format '{{.Names}}' | grep -qx "nomad_updater"; then
+  if "$runtime" ps --filter "name=^nomad_updater$" --filter "status=running" --format '{{.Names}}' | grep -qx "nomad_updater"; then
     echo -e "${GREEN}#${RESET} Updater container is running.\n"
   else
     echo -e "${RED}#${RESET} Updater container does not appear to be running."
-    echo -e "${RED}#${RESET} Check its logs with: docker logs nomad_updater"
+    echo -e "${RED}#${RESET} Check its logs with: ${runtime} logs nomad_updater"
     exit 1
   fi
 }
@@ -217,7 +260,7 @@ echo -e "${GREEN}###############################################################
 check_is_bash
 check_has_sudo
 check_confirmation
-check_docker_running
+check_container_runtime
 check_compose_file
 check_sidecar_dir
 

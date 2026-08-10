@@ -37,6 +37,7 @@ import {
   parseBackupManifest,
   resolveInside,
 } from '../utils/backup.js'
+import { getContainerRuntime, getContainerSocket } from '../utils/container_runtime.js'
 
 const execFileAsync = promisify(execFile)
 const BACKUP_ROOT_DEFAULT = '/backups'
@@ -55,11 +56,9 @@ export class BackupService {
   private activeOperation: Promise<unknown> | null = null
 
   constructor() {
-    this.docker = new Docker(
-      process.platform === 'win32'
-        ? { socketPath: '//./pipe/docker_engine' }
-        : { socketPath: '/var/run/docker.sock' }
-    )
+    this.docker = new Docker({
+      socketPath: getContainerSocket(getContainerRuntime()),
+    })
   }
 
   async getStatus(): Promise<BackupStatus> {

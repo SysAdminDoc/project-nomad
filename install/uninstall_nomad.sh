@@ -68,19 +68,46 @@ get_uninstall_confirmation(){
   esac
 }
 
-ensure_docker_installed() {
-    if ! command -v docker &> /dev/null; then
-        echo "Unable to find Docker. There may be a problem with your Docker installation."
+resolve_runtime() {
+  local configured_runtime="${NOMAD_CONTAINER_RUNTIME:-}"
+  if [[ -z "$configured_runtime" && -f "$MANAGEMENT_COMPOSE_FILE" ]]; then
+    configured_runtime=$(grep -E 'NOMAD_CONTAINER_RUNTIME=' "$MANAGEMENT_COMPOSE_FILE" 2>/dev/null | sed -E 's/.*NOMAD_CONTAINER_RUNTIME=([^[:space:]}]+).*/\1/' | head -n1)
+  fi
+  if [[ "$configured_runtime" == 'podman' ]]; then
+    echo 'podman'
+  else
+    echo 'docker'
+  fi
+}
+
+run_compose() {
+  if [[ "$(resolve_runtime)" == 'podman' ]]; then
+    if podman compose version &>/dev/null; then
+      podman compose "$@"
+    elif command -v podman-compose &>/dev/null; then
+      podman-compose "$@"
+    else
+      echo "Podman Compose is not installed or not available."
+      return 1
+    fi
+  else
+    docker compose "$@"
+  fi
+}
+
+ensure_container_runtime() {
+    local runtime
+    runtime=$(resolve_runtime)
+    if ! command -v "$runtime" &> /dev/null; then
+        echo "Unable to find the configured container runtime ($runtime). There may be a problem with your Project N.O.M.A.D. installation."
         exit 1
     fi
 }
 
 check_docker_compose() {
-  # Check if 'docker compose' (v2 plugin) is available
-  if ! docker compose version &>/dev/null; then
-    echo -e "${RED}#${RESET} Docker Compose v2 is not installed or not available as a Docker plugin."
-    echo -e "${YELLOW}#${RESET} This script requires 'docker compose' (v2), not 'docker-compose' (v1)."
-    echo -e "${YELLOW}#${RESET} Please read the Docker documentation at https://docs.docker.com/compose/install/ for instructions on how to install Docker Compose v2."
+  if ! run_compose version &>/dev/null; then
+    echo -e "${RED}#${RESET} Compose is not installed or not available for the configured container runtime."
+    echo -e "${YELLOW}#${RESET} Install Docker Compose v2 or the Podman Compose provider, then try again."
     exit 1
   fi
 }
@@ -103,27 +130,35 @@ storage_cleanup() {
 }
 
 uninstall_nomad() {
+    local runtime
+    runtime=$(resolve_runtime)
     echo "Stopping and removing Project N.O.M.A.D. management containers..."
-    docker compose -p project-nomad -f "${MANAGEMENT_COMPOSE_FILE}" down
+    run_compose -p project-nomad -f "${MANAGEMENT_COMPOSE_FILE}" down
     echo "Allowing some time for management containers to stop..."
     sleep 5
 
 
     # Stop and remove all containers where name starts with "nomad_"
     echo "Stopping and removing all Project N.O.M.A.D. app containers..."
-    docker ps -a --filter "name=^nomad_" --format "{{.Names}}" | xargs -r docker rm -f
+    local containers
+    containers=$("$runtime" ps -a --filter "name=^nomad_" --format "{{.Names}}")
+    while IFS= read -r container; do
+        if [[ -n "$container" ]]; then
+            "$runtime" rm -f "$container"
+        fi
+    done <<< "$containers"
     echo "Allowing some time for app containers to stop..."
     sleep 5
 
     echo "Containers should be stopped now."
 
-    # Remove the shared Docker network (may still exist if app containers were using it during compose down)
+    # Remove the shared container network (may still exist if app containers were using it during compose down)
     echo "Removing project-nomad_default network if it exists..."
-    docker network rm project-nomad_default 2>/dev/null && echo "Network removed." || echo "Network already removed or not found."
+    "$runtime" network rm project-nomad_default 2>/dev/null && echo "Network removed." || echo "Network already removed or not found."
 
     # Remove the shared update volume
     echo "Removing project-nomad_nomad-update-shared volume if it exists..."
-    docker volume rm project-nomad_nomad-update-shared 2>/dev/null && echo "Volume removed." || echo "Volume already removed or not found."
+    "$runtime" volume rm project-nomad_nomad-update-shared 2>/dev/null && echo "Volume removed." || echo "Volume already removed or not found."
 
     # Prompt user for storage cleanup and handle it if so
     storage_cleanup
@@ -139,7 +174,7 @@ uninstall_nomad() {
 check_has_sudo
 check_current_directory
 ensure_management_compose_file_exists
-ensure_docker_installed
+ensure_container_runtime
 check_docker_compose
 get_uninstall_confirmation
 uninstall_nomad

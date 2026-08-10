@@ -78,16 +78,54 @@ check_confirmation() {
   echo -e "${GREEN}#${RESET} Confirmation received. Proceeding with migration...\n"
 }
 
-check_docker_running() {
-  if ! command -v docker &>/dev/null; then
-    echo -e "${RED}#${RESET} Docker is not installed. Cannot proceed."
+resolve_runtime() {
+  local configured_runtime="${NOMAD_CONTAINER_RUNTIME:-}"
+  if [[ -z "$configured_runtime" && -f "$COMPOSE_FILE" ]]; then
+    configured_runtime=$(grep -E 'NOMAD_CONTAINER_RUNTIME=' "$COMPOSE_FILE" 2>/dev/null | sed -E 's/.*NOMAD_CONTAINER_RUNTIME=([^[:space:]}]+).*/\1/' | head -n1)
+  fi
+  if [[ "$configured_runtime" == 'podman' ]]; then
+    echo 'podman'
+  else
+    echo 'docker'
+  fi
+}
+
+run_compose() {
+  if [[ "$(resolve_runtime)" == 'podman' ]]; then
+    if podman compose version &>/dev/null; then
+      podman compose "$@"
+    elif command -v podman-compose &>/dev/null; then
+      podman-compose "$@"
+    else
+      echo -e "${RED}#${RESET} Podman Compose is not installed or not available."
+      return 1
+    fi
+  else
+    docker compose "$@"
+  fi
+}
+
+check_container_runtime() {
+  local runtime
+  runtime=$(resolve_runtime)
+  if ! command -v "$runtime" &>/dev/null; then
+    echo -e "${RED}#${RESET} ${runtime} is not installed. Cannot proceed."
     exit 1
   fi
-  if ! systemctl is-active --quiet docker; then
+  if [[ "$runtime" == 'podman' ]]; then
+    if ! podman compose version &>/dev/null && ! command -v podman-compose &>/dev/null; then
+      echo -e "${RED}#${RESET} Podman Compose is not installed or not available."
+      exit 1
+    fi
+    if ! systemctl --user is-active --quiet podman.socket; then
+      echo -e "${YELLOW}#${RESET} Rootless Podman socket is not running. Attempting to start it..."
+      systemctl --user start podman.socket 2>/dev/null || true
+    fi
+  elif ! systemctl is-active --quiet docker; then
     echo -e "${RED}#${RESET} Docker is not running. Please start Docker and try again."
     exit 1
   fi
-  echo -e "${GREEN}#${RESET} Docker is running.\n"
+  echo -e "${GREEN}#${RESET} ${runtime} is available.\n"
 }
 
 check_compose_file() {
@@ -188,14 +226,14 @@ add_disk_collector_service() {
 # also starts the new disk-collector sidecar we just added to compose.yml
 restart_stack() {
   echo -e "${YELLOW}#${RESET} Pulling latest images (including disk-collector)..."
-  if ! docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" pull; then
+  if ! run_compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" pull; then
     echo -e "${RED}#${RESET} Failed to pull images. Check your network connection."
     exit 1
   fi
   echo -e "${GREEN}#${RESET} Images pulled.\n"
 
   echo -e "${YELLOW}#${RESET} Restarting stack..."
-  if ! docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" up -d; then
+  if ! run_compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" up -d; then
     echo -e "${RED}#${RESET} Failed to bring the stack up."
     exit 1
   fi
@@ -204,12 +242,14 @@ restart_stack() {
 
 # Step 6: Verify
 verify_disk_collector_running() {
+  local runtime
+  runtime=$(resolve_runtime)
   sleep 3
-  if docker ps --filter "name=^nomad_disk_collector$" --filter "status=running" --format '{{.Names}}' | grep -qx "nomad_disk_collector"; then
+  if "$runtime" ps --filter "name=^nomad_disk_collector$" --filter "status=running" --format '{{.Names}}' | grep -qx "nomad_disk_collector"; then
     echo -e "${GREEN}#${RESET} disk-collector container is running.\n"
   else
     echo -e "${RED}#${RESET} disk-collector container does not appear to be running."
-    echo -e "${RED}#${RESET} Check its logs with: docker logs nomad_disk_collector"
+    echo -e "${RED}#${RESET} Check its logs with: ${runtime} logs nomad_disk_collector"
     exit 1
   fi
 }
@@ -222,7 +262,7 @@ echo -e "${GREEN}###############################################################
 check_is_bash
 check_has_sudo
 check_confirmation
-check_docker_running
+check_container_runtime
 check_compose_file
 
 echo -e "${YELLOW}#${RESET} Step 1: Stopping old host process...\n"

@@ -17,6 +17,7 @@ import KVStore from '#models/kv_store'
 import { BROADCAST_CHANNELS } from '../../constants/broadcast.js'
 import { KIWIX_LIBRARY_CMD } from '../../constants/kiwix.js'
 import { TRANSLATION_MODEL_LANGUAGES } from '../utils/translation_services.js'
+import { getContainerRuntime, getContainerSocket } from '../utils/container_runtime.js'
 
 @inject()
 export class DockerService {
@@ -31,15 +32,10 @@ export class DockerService {
   private _servicesStatusInflight: Promise<{ service_name: string; status: string }[]> | null = null
 
   constructor() {
-    // Support both Linux (production) and Windows (development with Docker Desktop)
-    const isWindows = process.platform === 'win32'
-    if (isWindows) {
-      // Windows Docker Desktop uses named pipe
-      this.docker = new Docker({ socketPath: '//./pipe/docker_engine' })
-    } else {
-      // Linux uses Unix socket
-      this.docker = new Docker({ socketPath: '/var/run/docker.sock' })
-    }
+    const runtime = getContainerRuntime()
+    const socketPath = getContainerSocket(runtime)
+    logger.info(`[DockerService] Using ${runtime} Docker-compatible API at ${socketPath}`)
+    this.docker = new Docker({ socketPath })
   }
 
   async affectContainer(

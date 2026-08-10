@@ -31,6 +31,8 @@ export default await Env.create(new URL('../', import.meta.url), {
   NOMAD_RCLONE_REMOTE: Env.schema.string.optional(),
   NOMAD_GUEST_MODE: Env.schema.boolean.optional(),
   NOMAD_GUEST_TOOLS: Env.schema.string.optional(),
+  NOMAD_CONTAINER_RUNTIME: Env.schema.string.optional(),
+  NOMAD_DOCKER_SOCKET: Env.schema.string.optional(),
 
   /*
   |----------------------------------------------------------
