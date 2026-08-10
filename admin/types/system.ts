@@ -6,6 +6,15 @@ export type GpuHealthStatus = {
   ollamaGpuAccessible: boolean
 }
 
+export type DiskHealthStatus = {
+  status: 'passed' | 'failed' | 'unknown'
+  source?: 'smartctl'
+  temperatureC?: number
+  percentageUsed?: number
+  mediaErrors?: number
+  message?: string
+}
+
 export type SystemInformationResponse = {
   cpu: Systeminformation.CpuData
   mem: Systeminformation.MemData
@@ -33,6 +42,7 @@ export type LSBlockDevice = {
   vendor: string | null
   rota: boolean | null
   tran: string | null
+  health?: DiskHealthStatus
   children?: LSBlockDevice[]
 }
 
@@ -60,6 +70,7 @@ export type NomadDiskInfo = {
   totalUsed: number
   totalSize: number
   percentUsed: number
+  health?: DiskHealthStatus
   filesystems: {
     fs: string
     mount: string
@@ -76,11 +87,10 @@ export type SystemUpdateStatus = {
   timestamp: string
 }
 
-
 export type CheckLatestVersionResult = {
-  success: boolean,
-  updateAvailable: boolean,
-  currentVersion: string,
-  latestVersion: string,
+  success: boolean
+  updateAvailable: boolean
+  currentVersion: string
+  latestVersion: string
   message?: string
 }

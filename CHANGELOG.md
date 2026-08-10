@@ -4,6 +4,7 @@ All notable changes to project-nomad will be documented in this file.
 
 ## [Unreleased]
 
+- Added first-boot hardware readiness scoring in Easy Setup, including SSD/SMART health, RAM, GPU VRAM, and actionable installation suggestions.
 - Added federated search across installed Kiwix, Kolibri, FlatNotes, and Qdrant sources with partial-service status reporting.
 - Added BM25 lexical retrieval and dense-vector score fusion for ZIM article chunks indexed in Qdrant.
 - Added scheduled Kiwix catalog update checks and one-click in-place ZIM refreshes from the Content Explorer.

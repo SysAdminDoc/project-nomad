@@ -167,7 +167,10 @@ add_disk_collector_service() {
     print "    restart: unless-stopped"
     print "    volumes:"
     print "      - /:/host:ro,rslave  # Read-only view of host FS with rslave propagation so /sys and /proc submounts are visible"
+    print "      - /dev:/host/dev:ro  # Read-only device nodes for SMART health probes"
     print "      - /opt/project-nomad/storage:/storage  # Shared storage dir — disk info written here is read by the admin container"
+    print "    cap_add:"
+    print "      - SYS_RAWIO"
     print ""
   }
   {print}' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"

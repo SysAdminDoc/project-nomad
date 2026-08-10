@@ -55,6 +55,7 @@ N.O.M.A.D. is a management UI ("Command Center") and API that orchestrates a col
 - **Notes** — local note-taking via [FlatNotes](https://github.com/dullage/flatnotes)
 - **System Benchmark** — hardware scoring with a [community leaderboard](https://benchmark.projectnomad.us)
 - **Easy Setup Wizard** — guided first-time configuration with curated content collections
+- **Hardware Readiness Check** — first-boot SSD health, RAM, and GPU VRAM scoring with setup suggestions
 - **Developer Caches** — optional npm, PyPI, and Docker Hub pull-through caches for air-gapped development
 - **Local Voice Services** — optional Whisper.cpp speech-to-text and Piper text-to-speech containers
 - **Offline Translation** — optional local Argos Translate models for map labels and wiki text

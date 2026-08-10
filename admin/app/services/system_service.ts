@@ -170,7 +170,8 @@ export class SystemService {
         }
       }
 
-      const ollamaUrl = remoteOllamaUrl || (await this.dockerService.getServiceURL(SERVICE_NAMES.OLLAMA))
+      const ollamaUrl =
+        remoteOllamaUrl || (await this.dockerService.getServiceURL(SERVICE_NAMES.OLLAMA))
       if (!ollamaUrl) {
         return null
       }
@@ -731,6 +732,7 @@ export class SystemService {
           rota: disk.rota || false,
           tran: disk.tran || '',
           size: disk.size,
+          health: disk.health,
           totalUsed,
           totalSize,
           percentUsed: Math.round(percentUsed * 100) / 100,

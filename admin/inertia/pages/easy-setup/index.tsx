@@ -14,6 +14,7 @@ import LoadingSpinner from '~/components/LoadingSpinner'
 import Alert from '~/components/Alert'
 import { IconCheck, IconChevronDown, IconChevronUp, IconCpu, IconBooks } from '@tabler/icons-react'
 import StorageProjectionBar from '~/components/StorageProjectionBar'
+import HardwareReadinessCard from '~/components/HardwareReadinessCard'
 import { useNotifications } from '~/context/NotificationContext'
 import useInternetStatus from '~/hooks/useInternetStatus'
 import { useSystemInfo } from '~/hooks/useSystemInfo'
@@ -386,7 +387,9 @@ export default function EasySetupWizard(props: {
       const servicesToInstall = remoteOllamaEnabled
         ? selectedServices.filter((s) => s !== SERVICE_NAMES.OLLAMA)
         : selectedServices
-      const installPromises = servicesToInstall.map((serviceName) => api.installService(serviceName))
+      const installPromises = servicesToInstall.map((serviceName) =>
+        api.installService(serviceName)
+      )
 
       await Promise.all(installPromises)
 
@@ -633,7 +636,11 @@ export default function EasySetupWizard(props: {
               <ul
                 className={classNames(
                   'mt-3 space-y-1',
-                  installed ? 'text-text-secondary' : selected ? 'text-white' : 'text-text-secondary'
+                  installed
+                    ? 'text-text-secondary'
+                    : selected
+                      ? 'text-white'
+                      : 'text-text-secondary'
                 )}
               >
                 {capability.features.map((feature, idx) => (
@@ -688,8 +695,16 @@ export default function EasySetupWizard(props: {
 
     return (
       <div className="space-y-8">
+        <HardwareReadinessCard
+          systemInfo={systemInfo}
+          projectedStorageBytes={projectedStorageBytes}
+          remoteOllamaConfigured={remoteOllamaEnabled && !!remoteOllamaUrl}
+        />
+
         <div className="text-center mb-6">
-          <h2 className="text-3xl font-bold text-text-primary mb-2">What do you want NOMAD to do?</h2>
+          <h2 className="text-3xl font-bold text-text-primary mb-2">
+            What do you want NOMAD to do?
+          </h2>
           <p className="text-text-secondary">
             Select the capabilities you need. You can always add more later.
           </p>
@@ -736,7 +751,9 @@ export default function EasySetupWizard(props: {
                                   }}
                                   className="w-4 h-4 accent-desert-green"
                                 />
-                                <span className="text-sm font-medium text-gray-700">Use remote Ollama instance</span>
+                                <span className="text-sm font-medium text-gray-700">
+                                  Use remote Ollama instance
+                                </span>
                               </label>
                               {remoteOllamaEnabled && (
                                 <div className="mt-3">
@@ -751,7 +768,9 @@ export default function EasySetupWizard(props: {
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-desert-green"
                                   />
                                   {remoteOllamaUrlError && (
-                                    <p className="mt-1 text-xs text-red-600">{remoteOllamaUrlError}</p>
+                                    <p className="mt-1 text-xs text-red-600">
+                                      {remoteOllamaUrlError}
+                                    </p>
                                   )}
                                 </div>
                               )}
@@ -819,7 +838,7 @@ export default function EasySetupWizard(props: {
               className={classNames(
                 'relative',
                 selectedMapCollections.includes(collection.slug) &&
-                'ring-4 ring-desert-green rounded-lg',
+                  'ring-4 ring-desert-green rounded-lg',
                 collection.all_installed && 'opacity-75',
                 !isOnline && 'opacity-50 cursor-not-allowed'
               )}
@@ -843,9 +862,11 @@ export default function EasySetupWizard(props: {
 
   const renderStep3 = () => {
     // Check if AI or Information capabilities are selected OR already installed
-    const isAiSelected = selectedServices.includes(SERVICE_NAMES.OLLAMA) ||
+    const isAiSelected =
+      selectedServices.includes(SERVICE_NAMES.OLLAMA) ||
       installedServices.some((s) => s.service_name === SERVICE_NAMES.OLLAMA)
-    const isInformationSelected = selectedServices.includes(SERVICE_NAMES.KIWIX) ||
+    const isInformationSelected =
+      selectedServices.includes(SERVICE_NAMES.KIWIX) ||
       installedServices.some((s) => s.service_name === SERVICE_NAMES.KIWIX)
 
     return (
@@ -905,7 +926,9 @@ export default function EasySetupWizard(props: {
                         <h4
                           className={classNames(
                             'text-lg font-semibold mb-1',
-                            selectedAiModels.includes(model.name) ? 'text-white' : 'text-text-primary'
+                            selectedAiModels.includes(model.name)
+                              ? 'text-white'
+                              : 'text-text-primary'
                           )}
                         >
                           {model.name}
@@ -913,7 +936,9 @@ export default function EasySetupWizard(props: {
                         <p
                           className={classNames(
                             'text-sm mb-2',
-                            selectedAiModels.includes(model.name) ? 'text-white' : 'text-text-secondary'
+                            selectedAiModels.includes(model.name)
+                              ? 'text-white'
+                              : 'text-text-secondary'
                           )}
                         >
                           {model.description}
@@ -963,7 +988,9 @@ export default function EasySetupWizard(props: {
               </div>
             ) : (
               <div className="text-center py-8 bg-surface-secondary rounded-lg">
-                <p className="text-text-secondary">No recommended AI models available at this time.</p>
+                <p className="text-text-secondary">
+                  No recommended AI models available at this time.
+                </p>
               </div>
             )}
           </div>
@@ -1057,14 +1084,14 @@ export default function EasySetupWizard(props: {
                   category={activeCategory}
                   selectedTierSlug={
                     activeCategory
-                      ? selectedTiers.get(activeCategory.slug)?.slug || activeCategory.installedTierSlug
+                      ? selectedTiers.get(activeCategory.slug)?.slug ||
+                        activeCategory.installedTierSlug
                       : null
                   }
                   onSelectTier={handleTierSelect}
                 />
               </>
             ) : null}
-
           </>
         )}
 
@@ -1093,7 +1120,9 @@ export default function EasySetupWizard(props: {
       <div className="space-y-6">
         <div className="text-center mb-6">
           <h2 className="text-3xl font-bold text-text-primary mb-2">Review Your Selections</h2>
-          <p className="text-text-secondary">Review your choices before starting the setup process.</p>
+          <p className="text-text-secondary">
+            Review your choices before starting the setup process.
+          </p>
         </div>
 
         {!hasSelections ? (
@@ -1289,9 +1318,9 @@ export default function EasySetupWizard(props: {
                     return `${count} ${count === 1 ? 'capability' : 'capabilities'}`
                   })()}
                   , {selectedMapCollections.length} map region
-                  {selectedMapCollections.length !== 1 && 's'}, {selectedTiers.size}{' '}
-                  content categor{selectedTiers.size !== 1 ? 'ies' : 'y'},{' '}
-                  {selectedAiModels.length} AI model{selectedAiModels.length !== 1 && 's'} selected
+                  {selectedMapCollections.length !== 1 && 's'}, {selectedTiers.size} content categor
+                  {selectedTiers.size !== 1 ? 'ies' : 'y'}, {selectedAiModels.length} AI model
+                  {selectedAiModels.length !== 1 && 's'} selected
                 </p>
               </div>
 

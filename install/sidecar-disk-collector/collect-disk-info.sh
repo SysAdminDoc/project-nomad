@@ -12,6 +12,61 @@ log() {
 
 log "disk-collector sidecar starting..."
 
+# SMART data is best-effort. The collector can still report disk capacity when
+# a host, USB bridge, or container runtime does not expose SMART attributes.
+collect_smart_health() {
+    local disk_name="$1"
+    local device="/host/dev/${disk_name}"
+    local smart_json
+    local passed
+    local status="unknown"
+    local message="SMART data unavailable"
+
+    if [[ ! -b "$device" && ! -c "$device" ]]; then
+        jq -n --arg status "$status" --arg message "$message" '{status:$status,message:$message}'
+        return
+    fi
+
+    smart_json=$(timeout 5 smartctl -a -j "$device" 2>/dev/null || true)
+    if [[ -z "$smart_json" ]]; then
+        jq -n --arg status "$status" --arg message "$message" '{status:$status,message:$message}'
+        return
+    fi
+
+    passed=$(printf '%s' "$smart_json" | jq -r '.smart_status.passed // empty' 2>/dev/null || true)
+    if [[ "$passed" == "true" ]]; then
+        status="passed"
+        message="SMART health passed"
+    elif [[ "$passed" == "false" ]]; then
+        status="failed"
+        message="SMART health reported a failure"
+    fi
+
+    local result
+    result=$(jq -n --arg status "$status" --arg message "$message" \
+        '{status:$status,source:"smartctl",message:$message}')
+
+    local temperature
+    temperature=$(printf '%s' "$smart_json" | jq -r '(.temperature.current // .nvme_smart_health_information_log.temperature // empty)' 2>/dev/null || true)
+    if [[ "$temperature" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        result=$(printf '%s' "$result" | jq --argjson value "$temperature" '. + {temperatureC:$value}')
+    fi
+
+    local percentage_used
+    percentage_used=$(printf '%s' "$smart_json" | jq -r '.nvme_smart_health_information_log.percentage_used // empty' 2>/dev/null || true)
+    if [[ "$percentage_used" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        result=$(printf '%s' "$result" | jq --argjson value "$percentage_used" '. + {percentageUsed:$value}')
+    fi
+
+    local media_errors
+    media_errors=$(printf '%s' "$smart_json" | jq -r '.nvme_smart_health_information_log.media_errors // empty' 2>/dev/null || true)
+    if [[ "$media_errors" =~ ^[0-9]+$ ]]; then
+        result=$(printf '%s' "$result" | jq --argjson value "$media_errors" '. + {mediaErrors:$value}')
+    fi
+
+    printf '%s' "$result"
+}
+
 # Write a valid placeholder immediately so admin has something to parse if the
 # file is missing (first install, user deleted it, etc.). The real data from the
 # first full collection cycle below will overwrite this within seconds.
@@ -28,6 +83,18 @@ while true; do
         log "WARNING: lsblk --sysroot /host failed, using empty block devices"
         DISK_LAYOUT='{"blockdevices":[]}'
     fi
+
+    # Attach a best-effort SMART result to each physical disk. The admin API
+    # uses this to show a health signal during first boot without treating
+    # missing SMART permissions as a drive failure.
+    HEALTH_JSON='{}'
+    while IFS= read -r DISK_NAME; do
+        [[ -z "$DISK_NAME" ]] && continue
+        HEALTH=$(collect_smart_health "$DISK_NAME")
+        HEALTH_JSON=$(printf '%s' "$HEALTH_JSON" | jq --arg name "$DISK_NAME" --argjson health "$HEALTH" '. + {($name):$health}')
+    done < <(printf '%s' "$DISK_LAYOUT" | jq -r '.blockdevices[] | select(.type == "disk") | .name')
+    DISK_LAYOUT=$(printf '%s' "$DISK_LAYOUT" | jq --argjson health "$HEALTH_JSON" \
+        '.blockdevices |= map(if $health[.name] then . + {health:$health[.name]} else . end)')
 
     # Get filesystem usage by parsing /host/proc/1/mounts (PID 1 = host init = root mount namespace)
     # /host/proc/mounts is a symlink to /proc/self/mounts, which always reflects the CURRENT
