@@ -62,6 +62,7 @@ N.O.M.A.D. is a management UI ("Command Center") and API that orchestrates a col
 - **Offline Translation** — optional local Argos Translate models for map labels and wiki text
 - **Backup & Restore** — compressed storage and MySQL archives to a second disk or an rclone remote
 - **Cluster Sync** — pair two boxes and mirror selected ZIM files or offline map regions over a trusted LAN
+- **Guest Kiosk** — classroom-safe mode with a dedicated launcher and an allowlist of tools instead of the admin UI
 
 N.O.M.A.D. also includes built-in tools like a Wikipedia content selector, ZIM library manager, and content explorer.
 
@@ -99,6 +100,12 @@ peer's Command Center URL and the same token on both boxes, then select the remo
 regions to mirror. Transfers are authenticated, size-checked, streamed to a temporary file, and
 renamed into place only after the download completes. Pairing is intended for a trusted LAN; use
 HTTPS or network isolation when appropriate.
+
+To run a classroom deployment without the management UI, set `NOMAD_GUEST_MODE=true` in the
+installation `.env` file. The default launcher exposes chat, maps, and local documentation. Set
+`NOMAD_GUEST_TOOLS` to a comma-separated allowlist of `chat`, `maps`, `docs`, `kiwix`, `kolibri`,
+`cyberchef`, or `flatnotes`; service tiles appear only when the corresponding service is installed.
+Blocked management pages redirect to the kiosk launcher, and blocked APIs return `403` responses.
 
 ## What's Included
 

@@ -50,6 +50,10 @@ services:
       - NOMAD_BACKUP_PATH=/backups
       - NOMAD_RCLONE_REMOTE=${NOMAD_RCLONE_REMOTE:-}
       - RCLONE_CONFIG=/config/rclone/rclone.conf
+      # Set NOMAD_GUEST_MODE=true for classroom deployments. Restrict the visible tools with
+      # NOMAD_GUEST_TOOLS=chat,maps,docs,kiwix,kolibri,cyberchef,flatnotes.
+      - NOMAD_GUEST_MODE=${NOMAD_GUEST_MODE:-false}
+      - NOMAD_GUEST_TOOLS=${NOMAD_GUEST_TOOLS:-chat,maps,docs}
     depends_on:
       mysql:
         condition: service_healthy

@@ -54,6 +54,10 @@ export type HealthDashboardResponse = {
 export type UsePageProps = {
   appVersion: string
   environment: string
+  guestKiosk?: {
+    enabled: boolean
+    tools: string[]
+  }
 }
 
 export type LSBlockDevice = {

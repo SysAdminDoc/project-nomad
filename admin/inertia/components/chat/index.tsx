@@ -29,6 +29,8 @@ export default function Chat({
   suggestionsEnabled = false,
   streamingEnabled = true,
 }: ChatProps) {
+  const { guestKiosk } = usePage<{ guestKiosk?: { enabled: boolean } }>().props
+  const guestMode = guestKiosk?.enabled === true
   const queryClient = useQueryClient()
   const { openModal, closeAllModals } = useModals()
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
@@ -58,13 +60,19 @@ export default function Chat({
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
-  const { data: lastModelSetting } = useSystemSetting({ key: 'chat.lastModel', enabled })
-  const { data: remoteOllamaUrlSetting } = useSystemSetting({ key: 'ai.remoteOllamaUrl', enabled })
+  const { data: lastModelSetting } = useSystemSetting({
+    key: 'chat.lastModel',
+    enabled: enabled && !guestMode,
+  })
+  const { data: remoteOllamaUrlSetting } = useSystemSetting({
+    key: 'ai.remoteOllamaUrl',
+    enabled: enabled && !guestMode,
+  })
 
   const { data: remoteStatus } = useQuery({
     queryKey: ['remoteOllamaStatus'],
     queryFn: () => api.getRemoteOllamaStatus(),
-    enabled: enabled && !!remoteOllamaUrlSetting?.value,
+    enabled: enabled && !guestMode && !!remoteOllamaUrlSetting?.value,
     refetchInterval: 15000,
   })
 
@@ -155,9 +163,9 @@ export default function Chat({
   // Persist model selection
   useEffect(() => {
     if (selectedModel) {
-      api.updateSetting('chat.lastModel', selectedModel)
+      if (!guestMode) api.updateSetting('chat.lastModel', selectedModel)
     }
-  }, [selectedModel])
+  }, [selectedModel, guestMode])
 
   const handleNewChat = useCallback(() => {
     // Just clear the active session and messages - don't create a session yet
@@ -411,6 +419,7 @@ export default function Chat({
         privacyMode={privacyMode}
         onPrivacyToggle={handlePrivacyToggle}
         isInModal={isInModal}
+        guestMode={guestMode}
       />
       <div className="flex-1 flex flex-col min-h-0">
         <div className="px-6 py-3 border-b border-border-subtle bg-surface-secondary flex items-center justify-between h-[75px] flex-shrink-0">
@@ -476,6 +485,7 @@ export default function Chat({
           chatSuggestionsEnabled={suggestionsEnabled}
           chatSuggestionsLoading={chatSuggestionsLoading}
           rewriteModelAvailable={rewriteModelAvailable}
+          allowModelDownloads={!guestMode}
         />
       </div>
     </div>

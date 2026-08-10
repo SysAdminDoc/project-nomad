@@ -1,5 +1,5 @@
 import MapsLayout from '~/layouts/MapsLayout'
-import { Head, Link, router } from '@inertiajs/react'
+import { Head, Link, router, usePage } from '@inertiajs/react'
 import MapComponent from '~/components/maps/MapComponent'
 import StyledButton from '~/components/StyledButton'
 import { IconArrowLeft } from '@tabler/icons-react'
@@ -9,6 +9,8 @@ import Alert from '~/components/Alert'
 export default function Maps(props: {
   maps: { baseAssetsExist: boolean; regionFiles: FileEntry[] }
 }) {
+  const { guestKiosk } = usePage<{ guestKiosk?: { enabled: boolean } }>().props
+  const isGuestKiosk = guestKiosk?.enabled === true
   const alertMessage = !props.maps.baseAssetsExist
     ? 'The base map assets have not been installed. Please download them first to enable map functionality.'
     : props.maps.regionFiles.length === 0
@@ -25,18 +27,20 @@ export default function Maps(props: {
             <IconArrowLeft className="mr-2" size={24} />
             <p className="text-lg text-text-secondary">Back to Home</p>
           </Link>
-          <div className="flex items-center gap-3">
-            <Link href="/settings/translation">
-              <StyledButton variant="secondary" icon="IconWorld">
-                Translate Map Text
-              </StyledButton>
-            </Link>
-            <Link href="/settings/maps" className="mr-4">
-              <StyledButton variant="primary" icon="IconSettings">
-                Manage Map Regions
-              </StyledButton>
-            </Link>
-          </div>
+          {!isGuestKiosk && (
+            <div className="flex items-center gap-3">
+              <Link href="/settings/translation">
+                <StyledButton variant="secondary" icon="IconWorld">
+                  Translate Map Text
+                </StyledButton>
+              </Link>
+              <Link href="/settings/maps" className="mr-4">
+                <StyledButton variant="primary" icon="IconSettings">
+                  Manage Map Regions
+                </StyledButton>
+              </Link>
+            </div>
+          )}
         </div>
         {alertMessage && (
           <div className="absolute top-20 left-4 right-4 z-50">
@@ -45,12 +49,16 @@ export default function Maps(props: {
               type="warning"
               variant="solid"
               className="w-full"
-              buttonProps={{
-                variant: 'secondary',
-                children: 'Go to Map Settings',
-                icon: 'IconSettings',
-                onClick: () => router.visit('/settings/maps'),
-              }}
+              buttonProps={
+                isGuestKiosk
+                  ? undefined
+                  : {
+                      variant: 'secondary',
+                      children: 'Go to Map Settings',
+                      icon: 'IconSettings',
+                      onClick: () => router.visit('/settings/maps'),
+                    }
+              }
             />
           </div>
         )}

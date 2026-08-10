@@ -15,6 +15,7 @@ interface ChatSidebarProps {
   privacyMode: boolean
   onPrivacyToggle: (enabled: boolean) => void
   isInModal?: boolean
+  guestMode?: boolean
 }
 
 export default function ChatSidebar({
@@ -26,10 +27,11 @@ export default function ChatSidebar({
   privacyMode,
   onPrivacyToggle,
   isInModal = false,
+  guestMode = false,
 }: ChatSidebarProps) {
   const { aiAssistantName } = usePage<{ aiAssistantName: string }>().props
   const [isKnowledgeBaseModalOpen, setIsKnowledgeBaseModalOpen] = useState(
-    () => new URLSearchParams(window.location.search).get('knowledge_base') === 'true'
+    () => !guestMode && new URLSearchParams(window.location.search).get('knowledge_base') === 'true'
   )
 
   function handleCloseKnowledgeBase() {
@@ -124,28 +126,32 @@ export default function ChatSidebar({
         >
           {isInModal ? 'Open in New Tab' : 'Back to Home'}
         </StyledButton>
-        <StyledButton
-          onClick={() => {
-            router.visit('/settings/models')
-          }}
-          icon="IconDatabase"
-          variant="primary"
-          size="sm"
-          fullWidth
-        >
-          Models & Settings
-        </StyledButton>
-        <StyledButton
-          onClick={() => {
-            setIsKnowledgeBaseModalOpen(true)
-          }}
-          icon="IconBrain"
-          variant="primary"
-          size="sm"
-          fullWidth
-        >
-          Knowledge Base
-        </StyledButton>
+        {!guestMode && (
+          <>
+            <StyledButton
+              onClick={() => {
+                router.visit('/settings/models')
+              }}
+              icon="IconDatabase"
+              variant="primary"
+              size="sm"
+              fullWidth
+            >
+              Models & Settings
+            </StyledButton>
+            <StyledButton
+              onClick={() => {
+                setIsKnowledgeBaseModalOpen(true)
+              }}
+              icon="IconBrain"
+              variant="primary"
+              size="sm"
+              fullWidth
+            >
+              Knowledge Base
+            </StyledButton>
+          </>
+        )}
         {sessions.length > 0 && (
           <StyledButton
             onClick={onClearHistory}
@@ -158,7 +164,7 @@ export default function ChatSidebar({
           </StyledButton>
         )}
       </div>
-      {isKnowledgeBaseModalOpen && (
+      {isKnowledgeBaseModalOpen && !guestMode && (
         <KnowledgeBaseModal aiAssistantName={aiAssistantName} onClose={handleCloseKnowledgeBase} />
       )}
     </div>

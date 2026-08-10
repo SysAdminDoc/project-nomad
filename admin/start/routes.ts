@@ -14,6 +14,7 @@ import DocsController from '#controllers/docs_controller'
 import DownloadsController from '#controllers/downloads_controller'
 import EasySetupController from '#controllers/easy_setup_controller'
 import HomeController from '#controllers/home_controller'
+import KioskController from '#controllers/kiosk_controller'
 import MapsController from '#controllers/maps_controller'
 import OllamaController from '#controllers/ollama_controller'
 import RagController from '#controllers/rag_controller'
@@ -30,6 +31,7 @@ transmit.registerRoutes()
 
 router.get('/', [HomeController, 'index'])
 router.get('/home', [HomeController, 'home'])
+router.get('/kiosk', [KioskController, 'index'])
 router.on('/about').renderInertia('about')
 router.get('/chat', [ChatsController, 'inertia'])
 router.get('/maps', [MapsController, 'index'])

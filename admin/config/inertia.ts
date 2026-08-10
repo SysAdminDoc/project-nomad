@@ -2,6 +2,7 @@ import KVStore from '#models/kv_store'
 import { SystemService } from '#services/system_service'
 import { defineConfig } from '@adonisjs/inertia'
 import type { InferSharedProps } from '@adonisjs/inertia/types'
+import { buildGuestKioskConfig } from '../app/utils/guest_kiosk.js'
 
 let _assistantNameCache: { value: string; expiresAt: number } | null = null
 
@@ -21,13 +22,15 @@ const inertiaConfig = defineConfig({
   sharedData: {
     appVersion: () => SystemService.getAppVersion(),
     environment: process.env.NODE_ENV || 'production',
+    guestKiosk: () =>
+      buildGuestKioskConfig(process.env.NOMAD_GUEST_MODE, process.env.NOMAD_GUEST_TOOLS),
     aiAssistantName: async () => {
       const now = Date.now()
       if (_assistantNameCache && now < _assistantNameCache.expiresAt) {
         return _assistantNameCache.value
       }
       const customName = await KVStore.getValue('ai.assistantCustomName')
-      const value = (customName && customName.trim()) ? customName : 'AI Assistant'
+      const value = customName && customName.trim() ? customName : 'AI Assistant'
       _assistantNameCache = { value, expiresAt: now + 60_000 }
       return value
     },
@@ -38,8 +41,8 @@ const inertiaConfig = defineConfig({
    */
   ssr: {
     enabled: false,
-    entrypoint: 'inertia/app/ssr.tsx'
-  }
+    entrypoint: 'inertia/app/ssr.tsx',
+  },
 })
 
 export default inertiaConfig

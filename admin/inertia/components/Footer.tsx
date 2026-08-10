@@ -7,6 +7,7 @@ import DebugInfoModal from './DebugInfoModal'
 
 export default function Footer() {
   const { appVersion } = usePage().props as unknown as UsePageProps
+  const { guestKiosk } = usePage<{ guestKiosk?: { enabled: boolean } }>().props
   const [debugModalOpen, setDebugModalOpen] = useState(false)
 
   return (
@@ -16,13 +17,15 @@ export default function Footer() {
           Project N.O.M.A.D. Command Center v{appVersion}
         </p>
         <span className="text-gray-300">|</span>
-        <button
-          onClick={() => setDebugModalOpen(true)}
-          className="text-sm/6 text-gray-500 hover:text-desert-green flex items-center gap-1 cursor-pointer"
-        >
-          <IconBug className="size-3.5" />
-          Debug Info
-        </button>
+        {!guestKiosk?.enabled && (
+          <button
+            onClick={() => setDebugModalOpen(true)}
+            className="text-sm/6 text-gray-500 hover:text-desert-green flex items-center gap-1 cursor-pointer"
+          >
+            <IconBug className="size-3.5" />
+            Debug Info
+          </button>
+        )}
         <ThemeToggle />
       </div>
       <DebugInfoModal open={debugModalOpen} onClose={() => setDebugModalOpen(false)} />

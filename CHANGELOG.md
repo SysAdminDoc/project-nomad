@@ -8,6 +8,7 @@ All notable changes to project-nomad will be documented in this file.
 - Added a System Information health dashboard with per-tool storage, per-container RAM, uptime, and last ZIM update details.
 - Added Backup & Restore for Nomad storage and MySQL data, with second-disk archives and optional rclone remote upload/restore.
 - Added authenticated Cluster Sync to mirror selected ZIM files and offline map regions between paired N.O.M.A.D. boxes.
+- Added Guest Kiosk mode for classroom deployments, with server-side tool allowlisting and no admin UI.
 - Added federated search across installed Kiwix, Kolibri, FlatNotes, and Qdrant sources with partial-service status reporting.
 - Added BM25 lexical retrieval and dense-vector score fusion for ZIM article chunks indexed in Qdrant.
 - Added scheduled Kiwix catalog update checks and one-click in-place ZIM refreshes from the Content Explorer.
