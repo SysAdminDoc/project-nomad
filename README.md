@@ -60,6 +60,7 @@ N.O.M.A.D. is a management UI ("Command Center") and API that orchestrates a col
 - **Developer Caches** — optional npm, PyPI, and Docker Hub pull-through caches for air-gapped development
 - **Local Voice Services** — optional Whisper.cpp speech-to-text and Piper text-to-speech containers
 - **Offline Translation** — optional local Argos Translate models for map labels and wiki text
+- **Backup & Restore** — compressed storage and MySQL archives to a second disk or an rclone remote
 
 N.O.M.A.D. also includes built-in tools like a Wikipedia content selector, ZIM library manager, and content explorer.
 
@@ -77,6 +78,20 @@ to history; private conversations remain only in the open tab.
 Offline Translation can be installed from **Settings → Apps**. It keeps selected Argos Translate
 language packs on the storage disk and provides translation panels in the map and content managers
 for text copied from offline maps and Kiwix articles.
+
+Backups are managed from **Settings → Backup & Restore**. The standard compose file mounts the host
+directory `/opt/project-nomad/backups` at `/backups`; set `NOMAD_BACKUP_PATH` in the compose `.env`
+file to point that mount at a second disk. Each archive contains the Nomad storage directory and a
+logical MySQL dump. Redis queues/cache state, container images, and host compose files are
+intentionally excluded from the archive; environment secrets are recreated or configured
+separately during recovery. Protect archives because application data and database settings may
+contain sensitive values.
+
+To enable an rclone destination, place the remote configuration in
+`/opt/project-nomad/rclone/rclone.conf`, set `NOMAD_RCLONE_REMOTE` to a value such as
+`s3:project-nomad/backups` in the compose `.env` file, and recreate the admin container. The
+optional rclone integration uses the [rclone command line](https://rclone.org/docs/) inside the
+admin image and supports listing, uploading, and restoring backup archives.
 
 ## What's Included
 

@@ -41,6 +41,7 @@ import type {
   TranslationRequest,
   TranslationResponse,
 } from '../../types/translation'
+import type { BackupOperationResult, BackupStatus, BackupTarget } from '../../types/backup'
 
 class API {
   private client: AxiosInstance
@@ -551,6 +552,31 @@ class API {
   async getHealthDashboard() {
     return catchInternal(async () => {
       const response = await this.client.get<HealthDashboardResponse>('/system/health-dashboard')
+      return response.data
+    })()
+  }
+
+  async getBackupStatus() {
+    return catchInternal(async () => {
+      const response = await this.client.get<BackupStatus>('/backups/status')
+      return response.data
+    })()
+  }
+
+  async createBackup(target: BackupTarget) {
+    return catchInternal(async () => {
+      const response = await this.client.post<BackupOperationResult>('/backups/create', { target })
+      return response.data
+    })()
+  }
+
+  async restoreBackup(target: BackupTarget, filename: string, confirmation: string) {
+    return catchInternal(async () => {
+      const response = await this.client.post<BackupOperationResult>('/backups/restore', {
+        target,
+        filename,
+        confirmation,
+      })
       return response.data
     })()
   }

@@ -7,6 +7,7 @@
 |
 */
 import BenchmarkController from '#controllers/benchmark_controller'
+import BackupController from '#controllers/backup_controller'
 import ChatsController from '#controllers/chats_controller'
 import DocsController from '#controllers/docs_controller'
 import DownloadsController from '#controllers/downloads_controller'
@@ -60,6 +61,7 @@ router
     router.get('/zim', [SettingsController, 'zim'])
     router.get('/zim/remote-explorer', [SettingsController, 'zimRemote'])
     router.get('/benchmark', [SettingsController, 'benchmark'])
+    router.get('/backups', [BackupController, 'index'])
     router.get('/support', [SettingsController, 'support'])
   })
   .prefix('/settings')
@@ -183,6 +185,14 @@ router
     router.patch('/settings', [SettingsController, 'updateSetting'])
   })
   .prefix('/api/system')
+
+router
+  .group(() => {
+    router.get('/status', [BackupController, 'status'])
+    router.post('/create', [BackupController, 'create'])
+    router.post('/restore', [BackupController, 'restore'])
+  })
+  .prefix('/api/backups')
 
 router
   .group(() => {

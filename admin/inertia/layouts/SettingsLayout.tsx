@@ -1,5 +1,6 @@
 import {
   IconArrowBigUpLines,
+  IconArchive,
   IconChartBar,
   IconDashboard,
   IconDatabase,
@@ -52,6 +53,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
       icon: IconArrowBigUpLines,
       current: false,
     },
+    { name: 'Backup & Restore', href: '/settings/backups', icon: IconArchive, current: false },
     { name: 'System', href: '/settings/system', icon: IconSettings, current: false },
     { name: 'Support the Project', href: '/settings/support', icon: IconHeart, current: false },
     { name: 'Legal Notices', href: '/settings/legal', icon: IconGavel, current: false },

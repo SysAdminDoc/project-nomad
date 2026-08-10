@@ -33,7 +33,13 @@ export function isSafeArchiveEntry(entry: string): boolean {
   }
 
   const normalized = entry.replace(/\\/g, '/')
-  if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) return false
+  if (
+    normalized.replace(/\/+$/, '') === '.' ||
+    normalized.startsWith('/') ||
+    /^[A-Za-z]:\//.test(normalized)
+  ) {
+    return false
+  }
 
   const segments = normalized.split('/')
   return segments.every((segment) => segment !== '..')
@@ -46,7 +52,7 @@ export function resolveInside(root: string, entry: string): string | null {
   const resolvedEntry = resolve(resolvedRoot, entry)
   const pathFromRoot = relative(resolvedRoot, resolvedEntry)
 
-  if (pathFromRoot === '' || (pathFromRoot && !pathFromRoot.startsWith(`..${sep}`))) {
+  if (pathFromRoot && !pathFromRoot.startsWith(`..${sep}`)) {
     return resolvedEntry
   }
 

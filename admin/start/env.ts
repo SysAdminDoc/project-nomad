@@ -27,6 +27,8 @@ export default await Env.create(new URL('../', import.meta.url), {
   |----------------------------------------------------------
   */
   NOMAD_STORAGE_PATH: Env.schema.string.optional(),
+  NOMAD_BACKUP_PATH: Env.schema.string.optional(),
+  NOMAD_RCLONE_REMOTE: Env.schema.string.optional(),
 
   /*
   |----------------------------------------------------------
