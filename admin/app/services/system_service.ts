@@ -12,6 +12,7 @@ import {
 } from '../../types/system.js'
 import { SERVICE_NAMES } from '../../constants/service_names.js'
 import { readFileSync } from 'node:fs'
+import { readdir, stat } from 'node:fs/promises'
 import path, { join } from 'node:path'
 import { getAllFilesystems, getFile } from '../utils/fs.js'
 import axios from 'axios'
@@ -20,11 +21,33 @@ import KVStore from '#models/kv_store'
 import { KV_STORE_SCHEMA, KVStoreKey } from '../../types/kv_store.js'
 import { isNewerVersion } from '../utils/version.js'
 import { invalidateAssistantNameCache } from '../../config/inertia.js'
+import InstalledResource from '#models/installed_resource'
+import WikipediaSelection from '#models/wikipedia_selection'
+import { calculateContainerMemoryUsage } from '../utils/health_dashboard.js'
+import type { HealthDashboardResponse } from '../../types/system.js'
+
+const HEALTH_DASHBOARD_STORAGE_ENTRIES = [
+  { id: 'zim', label: 'Offline library', relativePath: 'zim' },
+  { id: 'maps', label: 'Offline maps', relativePath: 'maps' },
+  { id: 'ollama', label: 'AI models', relativePath: 'ollama' },
+  { id: 'qdrant', label: 'Knowledge-base index', relativePath: 'qdrant' },
+  { id: 'kb-uploads', label: 'Knowledge-base files', relativePath: 'kb_uploads' },
+  { id: 'kolibri', label: 'Education content', relativePath: 'kolibri' },
+  { id: 'flatnotes', label: 'Notes', relativePath: 'flatnotes' },
+  { id: 'translation', label: 'Translation models', relativePath: 'translation' },
+  { id: 'whisper', label: 'Speech-to-text models', relativePath: 'whisper' },
+  { id: 'piper', label: 'Text-to-speech models', relativePath: 'piper' },
+  { id: 'npm-cache', label: 'npm cache', relativePath: 'caches/npm' },
+  { id: 'pypi-cache', label: 'PyPI cache', relativePath: 'caches/pypi' },
+  { id: 'docker-cache', label: 'Docker image cache', relativePath: 'caches/docker' },
+] as const
 
 @inject()
 export class SystemService {
   private static appVersion: string | null = null
   private static diskInfoFile = '/storage/nomad-disk-info.json'
+  private healthDashboardCache: { data: HealthDashboardResponse; expiresAt: number } | null = null
+  private healthDashboardInflight: Promise<HealthDashboardResponse> | null = null
 
   constructor(private dockerService: DockerService) {}
 
@@ -418,6 +441,212 @@ export class SystemService {
     } catch (error) {
       logger.error('Error getting system info:', error)
       return undefined
+    }
+  }
+
+  async getHealthDashboard(
+    systemInfo?: SystemInformationResponse
+  ): Promise<HealthDashboardResponse> {
+    const now = Date.now()
+    if (this.healthDashboardCache && now < this.healthDashboardCache.expiresAt) {
+      return this.healthDashboardCache.data
+    }
+    if (this.healthDashboardInflight) return this.healthDashboardInflight
+
+    this.healthDashboardInflight = this._buildHealthDashboard(systemInfo)
+      .then((data) => {
+        this.healthDashboardCache = { data, expiresAt: Date.now() + 15000 }
+        return data
+      })
+      .catch((error) => {
+        logger.warn(
+          `Failed to collect health dashboard data: ${error instanceof Error ? error.message : error}`
+        )
+        return {
+          diskUsageByTool: [],
+          containerMemory: [],
+          uptimeSeconds: Number(systemInfo?.uptime?.uptime) || 0,
+          lastZimUpdateAt: null,
+          collectedAt: new Date().toISOString(),
+        }
+      })
+      .finally(() => {
+        this.healthDashboardInflight = null
+      })
+
+    return this.healthDashboardInflight
+  }
+
+  private async _buildHealthDashboard(
+    suppliedSystemInfo?: SystemInformationResponse
+  ): Promise<HealthDashboardResponse> {
+    const [systemInfo, diskUsageByTool, containerMemory, lastZimUpdateAt] = await Promise.all([
+      suppliedSystemInfo ? Promise.resolve(suppliedSystemInfo) : this.getSystemInfo(),
+      this._collectDiskUsageByTool(),
+      this._collectContainerMemory(),
+      this._getLastZimUpdateAt(),
+    ])
+
+    return {
+      diskUsageByTool,
+      containerMemory,
+      uptimeSeconds: Number(systemInfo?.uptime?.uptime) || 0,
+      lastZimUpdateAt,
+      collectedAt: new Date().toISOString(),
+    }
+  }
+
+  private async _collectDiskUsageByTool(): Promise<HealthDashboardResponse['diskUsageByTool']> {
+    const storageRoot = join(process.cwd(), 'storage')
+    const usage = await Promise.all(
+      HEALTH_DASHBOARD_STORAGE_ENTRIES.map(async (entry) => ({
+        id: entry.id,
+        label: entry.label,
+        sizeBytes: await this._getDirectorySize(join(storageRoot, entry.relativePath)),
+      }))
+    )
+
+    return usage
+      .filter((entry) => entry.sizeBytes > 0)
+      .sort((left, right) => right.sizeBytes - left.sizeBytes)
+  }
+
+  private async _getDirectorySize(directory: string): Promise<number> {
+    try {
+      const entries = await readdir(directory, { withFileTypes: true })
+      const sizes = await Promise.all(
+        entries.map(async (entry) => {
+          const entryPath = join(directory, entry.name)
+          if (entry.isDirectory()) return this._getDirectorySize(entryPath)
+          try {
+            const entryStats = await stat(entryPath)
+            return entryStats.size
+          } catch {
+            return 0
+          }
+        })
+      )
+      return sizes.reduce((total, size) => total + size, 0)
+    } catch {
+      return 0
+    }
+  }
+
+  private async _collectContainerMemory(): Promise<HealthDashboardResponse['containerMemory']> {
+    try {
+      const [containers, services] = await Promise.all([
+        this.dockerService.docker.listContainers({ all: true }),
+        Service.query().select('service_name', 'friendly_name'),
+      ])
+      const friendlyNames = new Map(
+        services.map((service) => [
+          service.service_name,
+          service.friendly_name || service.service_name,
+        ])
+      )
+
+      const summaries = await Promise.all(
+        containers
+          .filter((container) =>
+            container.Names.some((name) => name.replace(/^\//, '').startsWith('nomad_'))
+          )
+          .map(async (container) => {
+            const name = container.Names[0]?.replace(/^\//, '') || container.Id.slice(0, 12)
+            const memory =
+              container.State === 'running'
+                ? await this._getContainerMemory(container.Id)
+                : { memoryBytes: 0, memoryLimitBytes: null, memoryPercent: null }
+
+            return {
+              name,
+              label: friendlyNames.get(name) || this._formatContainerLabel(name),
+              status: container.State || 'unknown',
+              ...memory,
+            }
+          })
+      )
+
+      return summaries.sort((left, right) => right.memoryBytes - left.memoryBytes)
+    } catch (error) {
+      logger.warn(
+        `Failed to collect container memory: ${error instanceof Error ? error.message : error}`
+      )
+      return []
+    }
+  }
+
+  private async _getContainerMemory(containerId: string) {
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      const stats = await Promise.race([
+        this.dockerService.docker.getContainer(containerId).stats({ stream: false }),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('Docker stats timed out')), 3000)
+        }),
+      ])
+      return calculateContainerMemoryUsage(stats.memory_stats)
+    } catch {
+      return { memoryBytes: 0, memoryLimitBytes: null, memoryPercent: null }
+    } finally {
+      if (timeout) clearTimeout(timeout)
+    }
+  }
+
+  private _formatContainerLabel(name: string): string {
+    return name
+      .replace(/^nomad_/, '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (character) => character.toUpperCase())
+  }
+
+  private async _getLastZimUpdateAt(): Promise<string | null> {
+    try {
+      const [zimResource, wikipedia, filesystemTimestamp] = await Promise.all([
+        InstalledResource.query()
+          .where('resource_type', 'zim')
+          .orderBy('installed_at', 'desc')
+          .first(),
+        WikipediaSelection.query()
+          .where('status', 'installed')
+          .orderBy('updated_at', 'desc')
+          .first(),
+        this._getNewestFileMtime(join(process.cwd(), 'storage', 'zim')),
+      ])
+      const timestamps = [zimResource?.installed_at, wikipedia?.updated_at]
+        .filter(Boolean)
+        .map((timestamp) => timestamp!.toMillis())
+      if (filesystemTimestamp !== null) timestamps.push(filesystemTimestamp)
+      timestamps.sort((left, right) => right - left)
+      return timestamps.length > 0 ? new Date(timestamps[0]).toISOString() : null
+    } catch (error) {
+      logger.warn(
+        `Failed to read last ZIM update timestamp: ${error instanceof Error ? error.message : error}`
+      )
+      return null
+    }
+  }
+
+  private async _getNewestFileMtime(directory: string): Promise<number | null> {
+    try {
+      const entries = await readdir(directory, { withFileTypes: true })
+      const timestamps = await Promise.all(
+        entries.map(async (entry) => {
+          const entryPath = join(directory, entry.name)
+          if (entry.isDirectory()) return this._getNewestFileMtime(entryPath)
+          try {
+            const entryStats = await stat(entryPath)
+            return entryStats.mtimeMs
+          } catch {
+            return null
+          }
+        })
+      )
+      const validTimestamps = timestamps.filter(
+        (timestamp): timestamp is number => timestamp !== null
+      )
+      return validTimestamps.length > 0 ? Math.max(...validTimestamps) : null
+    } catch {
+      return null
     }
   }
 

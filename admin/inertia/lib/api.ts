@@ -8,6 +8,7 @@ import { ServiceSlim } from '../../types/services'
 import { FileEntry } from '../../types/files'
 import {
   CheckLatestVersionResult,
+  HealthDashboardResponse,
   SystemInformationResponse,
   SystemUpdateStatus,
 } from '../../types/system'
@@ -543,6 +544,13 @@ class API {
   async getSystemInfo() {
     return catchInternal(async () => {
       const response = await this.client.get<SystemInformationResponse>('/system/info')
+      return response.data
+    })()
+  }
+
+  async getHealthDashboard() {
+    return catchInternal(async () => {
+      const response = await this.client.get<HealthDashboardResponse>('/system/health-dashboard')
       return response.data
     })()
   }

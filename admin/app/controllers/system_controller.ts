@@ -24,6 +24,10 @@ export default class SystemController {
         return await this.systemService.getSystemInfo();
     }
 
+    async getHealthDashboard({ }: HttpContext) {
+        return await this.systemService.getHealthDashboard();
+    }
+
     async getServices({ }: HttpContext) {
         return await this.systemService.getServices({ installedOnly: true });
     }

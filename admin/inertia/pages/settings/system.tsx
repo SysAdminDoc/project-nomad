@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Head } from '@inertiajs/react'
 import SettingsLayout from '~/layouts/SettingsLayout'
-import { SystemInformationResponse } from '../../../types/system'
+import { HealthDashboardResponse, SystemInformationResponse } from '../../../types/system'
 import { formatBytes } from '~/lib/util'
 import { getAllDiskDisplayItems } from '~/hooks/useDiskDisplayData'
 import CircularGauge from '~/components/systeminfo/CircularGauge'
@@ -14,13 +15,28 @@ import { useNotifications } from '~/context/NotificationContext'
 import { useModals } from '~/context/ModalContext'
 import api from '~/lib/api'
 import StatusCard from '~/components/systeminfo/StatusCard'
-import { IconCpu, IconDatabase, IconServer, IconDeviceDesktop, IconComponents } from '@tabler/icons-react'
+import {
+  IconCpu,
+  IconDatabase,
+  IconServer,
+  IconDeviceDesktop,
+  IconComponents,
+} from '@tabler/icons-react'
 
 export default function SettingsPage(props: {
-  system: { info: SystemInformationResponse | undefined }
+  system: {
+    info: SystemInformationResponse | undefined
+    health: HealthDashboardResponse | undefined
+  }
 }) {
   const { data: info } = useSystemInfo({
     initialData: props.system.info,
+  })
+  const { data: health } = useQuery<HealthDashboardResponse | undefined>({
+    queryKey: ['system-health-dashboard'],
+    queryFn: () => api.getHealthDashboard(),
+    initialData: props.system.health,
+    refetchInterval: 30000,
   })
   const { addNotification } = useNotifications()
   const { openModal, closeAllModals } = useModals()
@@ -54,10 +70,13 @@ export default function SettingsPage(props: {
               throw new Error(response?.message || 'Force reinstall failed')
             }
             addNotification({
-              message: 'AI Assistant is being reinstalled with GPU support. This page will reload shortly.',
+              message:
+                'AI Assistant is being reinstalled with GPU support. This page will reload shortly.',
               type: 'success',
             })
-            try { localStorage.removeItem('nomad:gpu-banner-dismissed') } catch {}
+            try {
+              localStorage.removeItem('nomad:gpu-banner-dismissed')
+            } catch {}
             setTimeout(() => window.location.reload(), 5000)
           } catch (error) {
             addNotification({
@@ -73,9 +92,8 @@ export default function SettingsPage(props: {
         cancelText="Cancel"
       >
         <p className="text-text-primary">
-          This will recreate the AI Assistant container with GPU support enabled.
-          Your downloaded models will be preserved. The service will be briefly
-          unavailable during reinstall.
+          This will recreate the AI Assistant container with GPU support enabled. Your downloaded
+          models will be preserved. The service will be briefly unavailable during reinstall.
         </p>
       </StyledModal>,
       'gpu-health-force-reinstall-modal'
@@ -84,12 +102,11 @@ export default function SettingsPage(props: {
 
   // Use (total - available) to reflect actual memory pressure.
   // mem.used includes reclaimable buff/cache on Linux, which inflates the number.
-  const memoryUsed = info?.mem.total && info?.mem.available != null
-    ? info.mem.total - info.mem.available
-    : info?.mem.used || 0
-  const memoryUsagePercent = info?.mem.total
-    ? ((memoryUsed / info.mem.total) * 100).toFixed(1)
-    : 0
+  const memoryUsed =
+    info?.mem.total && info?.mem.available != null
+      ? info.mem.total - info.mem.available
+      : info?.mem.used || 0
+  const memoryUsagePercent = info?.mem.total ? ((memoryUsed / info.mem.total) * 100).toFixed(1) : 0
 
   const swapUsagePercent = info?.mem.swaptotal
     ? ((info.mem.swapused / info.mem.swaptotal) * 100).toFixed(1)
@@ -99,14 +116,32 @@ export default function SettingsPage(props: {
   const uptimeDays = Math.floor(uptimeSeconds / 86400)
   const uptimeHours = Math.floor((uptimeSeconds % 86400) / 3600)
   const uptimeMinutes = Math.floor((uptimeSeconds % 3600) / 60)
-  const uptimeDisplay = uptimeDays > 0
-    ? `${uptimeDays}d ${uptimeHours}h ${uptimeMinutes}m`
-    : uptimeHours > 0
-      ? `${uptimeHours}h ${uptimeMinutes}m`
-      : `${uptimeMinutes}m`
+  const uptimeDisplay =
+    uptimeDays > 0
+      ? `${uptimeDays}d ${uptimeHours}h ${uptimeMinutes}m`
+      : uptimeHours > 0
+        ? `${uptimeHours}h ${uptimeMinutes}m`
+        : `${uptimeMinutes}m`
 
   // Build storage display items - fall back to fsSize when disk array is empty
   const storageItems = getAllDiskDisplayItems(info?.disk, info?.fsSize)
+  const toolStorageTotal =
+    health?.diskUsageByTool.reduce((total, item) => total + item.sizeBytes, 0) || 0
+  const containerMemoryTotal =
+    health?.containerMemory.reduce((total, item) => total + item.memoryBytes, 0) || 0
+  const formatHealthTimestamp = (timestamp: string | null | undefined) =>
+    timestamp ? new Date(timestamp).toLocaleString() : 'No ZIM content installed'
+  const formatHealthUptime = (seconds: number | undefined) => {
+    if (!seconds) return 'Checking...'
+    const days = Math.floor(seconds / 86400)
+    const hours = Math.floor((seconds % 86400) / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    return days > 0
+      ? `${days}d ${hours}h ${minutes}m`
+      : hours > 0
+        ? `${hours}h ${minutes}m`
+        : `${minutes}m`
+  }
 
   return (
     <SettingsLayout>
@@ -130,6 +165,100 @@ export default function SettingsPage(props: {
               />
             </div>
           )}
+          <section className="mb-12">
+            <h2 className="text-2xl font-bold text-desert-green mb-6 flex items-center gap-2">
+              <div className="w-1 h-6 bg-desert-green" />
+              Health Dashboard
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-6">
+              <StatusCard
+                title="Last ZIM update"
+                value={formatHealthTimestamp(health?.lastZimUpdateAt)}
+              />
+              <StatusCard title="Container RAM" value={formatBytes(containerMemoryTotal)} />
+              <StatusCard title="Uptime" value={formatHealthUptime(health?.uptimeSeconds)} />
+              <StatusCard
+                title="Dashboard collected"
+                value={
+                  health?.collectedAt
+                    ? new Date(health.collectedAt).toLocaleTimeString()
+                    : 'Checking...'
+                }
+              />
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div className="bg-desert-white rounded-lg p-6 border border-desert-stone-light shadow-sm">
+                <h3 className="text-lg font-semibold text-desert-green mb-4">Disk usage by tool</h3>
+                {health?.diskUsageByTool.length ? (
+                  <div className="space-y-4">
+                    {health.diskUsageByTool.map((item) => {
+                      const share =
+                        toolStorageTotal > 0 ? (item.sizeBytes / toolStorageTotal) * 100 : 0
+                      return (
+                        <div key={item.id}>
+                          <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="font-medium text-desert-stone-dark">{item.label}</span>
+                            <span className="font-mono text-desert-green-dark">
+                              {formatBytes(item.sizeBytes)}
+                            </span>
+                          </div>
+                          <div className="mt-1 h-3 overflow-hidden rounded-full bg-desert-stone-lighter">
+                            <div
+                              className="h-full rounded-full bg-desert-green transition-all duration-500"
+                              style={{ width: `${Math.max(share, 1)}%` }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-desert-stone-dark">
+                    No tool-specific storage has been recorded yet.
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-desert-white rounded-lg p-6 border border-desert-stone-light shadow-sm">
+                <h3 className="text-lg font-semibold text-desert-green mb-4">RAM per container</h3>
+                {health?.containerMemory.length ? (
+                  <div className="space-y-3">
+                    {health.containerMemory.map((container) => (
+                      <div
+                        key={container.name}
+                        className="flex items-center justify-between gap-4 border-b border-desert-stone-lighter pb-3 last:border-b-0 last:pb-0"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-desert-stone-dark">
+                            {container.label}
+                          </div>
+                          <div className="text-xs capitalize text-desert-stone">
+                            {container.status}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="font-mono text-sm text-desert-green-dark">
+                            {formatBytes(container.memoryBytes)}
+                          </div>
+                          <div className="text-xs text-desert-stone">
+                            {container.memoryPercent === null
+                              ? 'Limit unavailable'
+                              : `${container.memoryPercent}% of limit`}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-desert-stone-dark">
+                    Container memory data is not available.
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
           <section className="mb-12">
             <h2 className="text-2xl font-bold text-desert-green mb-6 flex items-center gap-2">
               <div className="w-1 h-6 bg-desert-green" />
@@ -229,14 +358,16 @@ export default function SettingsPage(props: {
                   title="Graphics"
                   icon={<IconComponents className="w-6 h-6" />}
                   variant="elevated"
-                  data={info.graphics.controllers.map((gpu, i) => {
-                    const prefix = info.graphics.controllers.length > 1 ? `GPU ${i + 1} ` : ''
-                    return [
-                      { label: `${prefix}Model`, value: gpu.model },
-                      { label: `${prefix}Vendor`, value: gpu.vendor },
-                      { label: `${prefix}VRAM`, value: gpu.vram ? `${gpu.vram} MB` : 'N/A' },
-                    ]
-                  }).flat()}
+                  data={info.graphics.controllers
+                    .map((gpu, i) => {
+                      const prefix = info.graphics.controllers.length > 1 ? `GPU ${i + 1} ` : ''
+                      return [
+                        { label: `${prefix}Model`, value: gpu.model },
+                        { label: `${prefix}Vendor`, value: gpu.vendor },
+                        { label: `${prefix}VRAM`, value: gpu.vram ? `${gpu.vram} MB` : 'N/A' },
+                      ]
+                    })
+                    .flat()}
                 />
               )}
             </div>

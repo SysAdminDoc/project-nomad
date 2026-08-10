@@ -27,6 +27,29 @@ export type SystemInformationResponse = {
   gpuHealth?: GpuHealthStatus
 }
 
+export type HealthDashboardDiskUsage = {
+  id: string
+  label: string
+  sizeBytes: number
+}
+
+export type HealthDashboardContainerMemory = {
+  name: string
+  label: string
+  status: string
+  memoryBytes: number
+  memoryLimitBytes: number | null
+  memoryPercent: number | null
+}
+
+export type HealthDashboardResponse = {
+  diskUsageByTool: HealthDashboardDiskUsage[]
+  containerMemory: HealthDashboardContainerMemory[]
+  uptimeSeconds: number
+  lastZimUpdateAt: string | null
+  collectedAt: string
+}
+
 // Type inferrence is not working properly with usePage and shared props, so we define this type manually
 export type UsePageProps = {
   appVersion: string

@@ -20,9 +20,11 @@ export default class SettingsController {
 
   async system({ inertia }: HttpContext) {
     const systemInfo = await this.systemService.getSystemInfo()
+    const health = await this.systemService.getHealthDashboard(systemInfo)
     return inertia.render('settings/system', {
       system: {
         info: systemInfo,
+        health,
       },
     })
   }
