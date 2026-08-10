@@ -17,6 +17,8 @@ services:
       - "host.docker.internal:host-gateway"  # Enables host.docker.internal on Linux
     ports:
       - "8080:8080"
+    # Docker selects the native platform from each image manifest. Keep this unset so the same
+    # compose file runs natively on amd64 and linux/arm64 hosts.
     volumes:
       - /opt/project-nomad/storage:/app/storage # If you change the default storage path (/opt/project-nomad/storage), make sure to update the disk-collector config as well!
       - ${NOMAD_BACKUP_PATH:-/opt/project-nomad/backups}:/backups # Keep backups on a separate disk when possible; change the host path in the compose .env file.

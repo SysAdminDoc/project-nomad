@@ -37,6 +37,7 @@ UPDATE_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project
 script_option_debug='true'
 accepted_terms='false'
 local_ip_address=''
+nomad_host_arch=''
 
 ###################################################################################################################################################################################################
 #                                                                                                                                                                                                 #
@@ -84,6 +85,37 @@ check_is_debian_based() {
     exit 1
   fi
     echo -e "${GREEN}#${RESET} This script is running on a Debian-based system.\\n"
+}
+
+detect_host_architecture() {
+  local detected_arch=''
+
+  if command -v dpkg &> /dev/null; then
+    detected_arch=$(dpkg --print-architecture 2>/dev/null || true)
+  fi
+  detected_arch="${detected_arch:-$(uname -m)}"
+
+  case "${detected_arch,,}" in
+    amd64|x86_64|x64)
+      nomad_host_arch='amd64'
+      ;;
+    arm64|aarch64|armv8|armv8l)
+      nomad_host_arch='arm64'
+      ;;
+    armhf|arm|armv7|armv7l)
+      echo -e "${RED}#${RESET} 32-bit ARM was detected (${detected_arch}). Please install a 64-bit Debian-based OS for ARM64 support."
+      exit 1
+      ;;
+    *)
+      echo -e "${RED}#${RESET} Unsupported host architecture: ${detected_arch}. N.O.M.A.D. supports amd64 and ARM64 hosts."
+      exit 1
+      ;;
+  esac
+
+  echo -e "${GREEN}#${RESET} Host architecture detected: ${nomad_host_arch}.\n"
+  if [[ "${nomad_host_arch}" == 'arm64' ]]; then
+    echo -e "${GREEN}#${RESET} ARM64 mode enabled for Raspberry Pi 5, Orange Pi, Jetson, and compatible 64-bit Debian systems.\n"
+  fi
 }
 
 ensure_dependencies_installed() {
@@ -212,9 +244,40 @@ check_docker_compose() {
   fi
 }
 
+verify_docker_architecture() {
+  local docker_arch=''
+  docker_arch=$(docker info --format '{{.Architecture}}' 2>/dev/null || true)
+  if [[ -z "${docker_arch}" ]]; then
+    echo -e "${YELLOW}#${RESET} Could not read Docker's architecture; continuing with ${nomad_host_arch}.\n"
+    return 0
+  fi
+
+  case "${docker_arch,,}" in
+    x86_64|amd64|x64) docker_arch='amd64' ;;
+    aarch64|arm64|armv8|armv8l) docker_arch='arm64' ;;
+    armv7l|armhf|arm) docker_arch='arm' ;;
+  esac
+
+  if [[ "${docker_arch}" != "${nomad_host_arch}" ]]; then
+    echo -e "${YELLOW}#${RESET} Docker reports ${docker_arch} while the host reports ${nomad_host_arch}. Docker may be running through emulation.\n"
+  else
+    echo -e "${GREEN}#${RESET} Docker architecture verified: ${docker_arch}.\n"
+  fi
+}
+
 setup_nvidia_container_toolkit() {
   # This function attempts to set up NVIDIA GPU support but is non-blocking
   # Any failures will result in warnings but will NOT stop the installation process
+
+  if [[ "${nomad_host_arch}" == 'arm64' ]]; then
+    echo -e "${YELLOW}#${RESET} ARM64 host detected. NVIDIA runtime setup is managed by JetPack on Jetson devices; skipping the x86 NVIDIA repository setup.\n"
+    if command -v nvidia-container-runtime &> /dev/null || docker info 2>/dev/null | grep -qi nvidia; then
+      echo -e "${GREEN}#${RESET} An ARM64 NVIDIA container runtime is already available.\n"
+    else
+      echo -e "${YELLOW}#${RESET} No ARM64 NVIDIA runtime detected. Raspberry Pi and CPU-only ARM64 systems will use CPU inference.\n"
+    fi
+    return 0
+  fi
   
   echo -e "${YELLOW}#${RESET} Checking for NVIDIA GPU...\\n"
   
@@ -476,6 +539,11 @@ verify_gpu_setup() {
   
   echo -e "\\n${YELLOW}#${RESET} GPU Setup Verification\\n"
   echo -e "${YELLOW}===========================================${RESET}\\n"
+
+  if [[ "${nomad_host_arch}" == 'arm64' ]]; then
+    echo -e "${GREEN}#${RESET} ARM64 runtime: CPU services and multi-architecture containers are enabled.\n"
+    echo -e "${YELLOW}#${RESET} Jetson GPU acceleration requires a JetPack-compatible host NVIDIA runtime; it is not installed by this script.\n"
+  fi
   
   # Check if NVIDIA GPU is present
   if command -v nvidia-smi &> /dev/null; then
@@ -525,6 +593,7 @@ verify_gpu_setup() {
 
 success_message() {
   echo -e "${GREEN}#${RESET} Project N.O.M.A.D installation completed successfully!\\n"
+  echo -e "${GREEN}#${RESET} Native host architecture: ${nomad_host_arch}\\n"
   echo -e "${GREEN}#${RESET} Installation files are located at /opt/project-nomad\\n\n"
   echo -e "${GREEN}#${RESET} Project N.O.M.A.D's Command Center should automatically start whenever your device reboots. However, if you need to start it manually, you can always do so by running: ${WHITE_R}${NOMAD_DIR}/start_nomad.sh${RESET}\\n"
   echo -e "${GREEN}#${RESET} You can now access the management interface at http://localhost:8080 or http://${local_ip_address}:8080\\n"
@@ -540,6 +609,7 @@ success_message() {
 # Pre-flight checks
 check_is_debian_based
 check_is_bash
+detect_host_architecture
 check_has_sudo
 ensure_dependencies_installed
 check_is_debug_mode
@@ -549,6 +619,7 @@ get_install_confirmation
 accept_terms
 ensure_docker_installed
 check_docker_compose
+verify_docker_architecture
 setup_nvidia_container_toolkit
 get_local_ip
 create_nomad_directory

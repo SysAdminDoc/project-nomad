@@ -37,6 +37,29 @@ Project N.O.M.A.D. is now installed on your device! Open a browser and navigate 
 
 For a complete step-by-step walkthrough (including Ubuntu installation), see the [Installation Guide](https://www.projectnomad.us/install).
 
+### ARM64 Devices
+
+The management image is built for both `linux/amd64` and `linux/arm64`. The installer requires a
+64-bit Debian-based OS and detects ARM64 automatically; Docker then selects the native ARM64
+variant for each upstream service image. Raspberry Pi 5 and Orange Pi deployments should use the
+CPU path for local inference. Jetson deployments can use GPU acceleration when JetPack has already
+installed a compatible ARM64 NVIDIA container runtime; the installer does not replace JetPack's
+host-managed runtime.
+
+To publish a multi-architecture image from a machine with Docker Buildx configured, use the same
+contract as the release builder:
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg VERSION=1.31.0 \
+  -t ghcr.io/crosstalk-solutions/project-nomad:latest \
+  --push .
+```
+
+Do not add a fixed `platform:` value to the supplied compose file; leaving it unset lets Docker
+select the host architecture without emulation.
+
 ### Advanced Installation
 
 For more control over the installation process, copy and paste the [Docker Compose template](https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/management_compose.yaml) into a `docker-compose.yml` file and customize it to your liking (be sure to replace any placeholders with your actual values). Then, run `docker compose up -d` to start the Command Center and its dependencies. Note: this method is recommended for advanced users only, as it requires familiarity with Docker and manual configuration before starting.
@@ -135,6 +158,10 @@ _Note: Project N.O.M.A.D. is not sponsored by any hardware manufacturer and is d
 - Storage: At least 5 GB free disk space
 - OS: Debian-based (Ubuntu recommended)
 - Stable internet connection (required during install only)
+
+ARM64 boards should run a 64-bit Debian-based image. A Raspberry Pi 5 or Orange Pi is suitable
+for the management UI, maps, and offline services; model size and inference speed depend heavily
+on available RAM. Jetson GPU support depends on the installed JetPack/NVIDIA container runtime.
 
 To run LLM's and other included AI tools:
 

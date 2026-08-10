@@ -6,6 +6,7 @@ import { CheckServiceUpdatesJob } from '#jobs/check_service_updates_job'
 import { affectServiceValidator, checkLatestVersionValidator, installServiceValidator, subscribeToReleaseNotesValidator, updateServiceValidator } from '#validators/system';
 import { inject } from '@adonisjs/core'
 import type { HttpContext } from '@adonisjs/core/http'
+import { getRuntimeArchitecture, normalizeArchitecture } from '../utils/platform.js'
 
 @inject()
 export default class SystemController {
@@ -169,17 +170,9 @@ export default class SystemController {
     private async getHostArch(): Promise<string> {
         try {
             const info = await this.dockerService.docker.info()
-            const arch = info.Architecture || ''
-            const archMap: Record<string, string> = {
-                x86_64: 'amd64',
-                aarch64: 'arm64',
-                armv7l: 'arm',
-                amd64: 'amd64',
-                arm64: 'arm64',
-            }
-            return archMap[arch] || arch.toLowerCase()
+            return normalizeArchitecture(info.Architecture)
         } catch {
-            return 'amd64'
+            return getRuntimeArchitecture()
         }
     }
 }

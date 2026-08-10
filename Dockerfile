@@ -1,7 +1,25 @@
 FROM node:22-slim AS base
 
-# Install bash & curl for entrypoint script compatibility, graphicsmagick for pdf2pic, and vips-dev & build-base for sharp 
-RUN apt-get update && apt-get install -y bash curl graphicsmagick libvips-dev build-essential rclone
+ARG TARGETARCH
+
+# Install bash & curl for entrypoint script compatibility, graphicsmagick for pdf2pic, vips-dev &
+# build tools for sharp/libzim, and rclone. TARGETARCH is supplied by BuildKit for multi-platform builds.
+RUN set -eux; \
+    case "${TARGETARCH:-unknown}" in \
+      amd64|arm64|unknown) ;; \
+      *) echo "Unsupported Docker target architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      bash \
+      curl \
+      graphicsmagick \
+      libvips-dev \
+      build-essential \
+      pkg-config \
+      python3 \
+      rclone; \
+    rm -rf /var/lib/apt/lists/*
 
 # All deps stage
 FROM base AS deps
