@@ -42,6 +42,13 @@ import type {
   TranslationResponse,
 } from '../../types/translation'
 import type { BackupOperationResult, BackupStatus, BackupTarget } from '../../types/backup'
+import type {
+  ClusterConfig,
+  ClusterConfigResult,
+  ClusterStatus,
+  ClusterSyncResult,
+  ClusterTokenResult,
+} from '../../types/cluster'
 
 class API {
   private client: AxiosInstance
@@ -577,6 +584,34 @@ class API {
         filename,
         confirmation,
       })
+      return response.data
+    })()
+  }
+
+  async getClusterStatus() {
+    return catchInternal(async () => {
+      const response = await this.client.get<ClusterStatus>('/cluster/status')
+      return response.data
+    })()
+  }
+
+  async generateClusterToken() {
+    return catchInternal(async () => {
+      const response = await this.client.post<ClusterTokenResult>('/cluster/token')
+      return response.data
+    })()
+  }
+
+  async configureCluster(config: ClusterConfig) {
+    return catchInternal(async () => {
+      const response = await this.client.patch<ClusterConfigResult>('/cluster/config', config)
+      return response.data
+    })()
+  }
+
+  async syncClusterResources(resource_keys: string[]) {
+    return catchInternal(async () => {
+      const response = await this.client.post<ClusterSyncResult>('/cluster/sync', { resource_keys })
       return response.data
     })()
   }

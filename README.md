@@ -61,6 +61,7 @@ N.O.M.A.D. is a management UI ("Command Center") and API that orchestrates a col
 - **Local Voice Services** — optional Whisper.cpp speech-to-text and Piper text-to-speech containers
 - **Offline Translation** — optional local Argos Translate models for map labels and wiki text
 - **Backup & Restore** — compressed storage and MySQL archives to a second disk or an rclone remote
+- **Cluster Sync** — pair two boxes and mirror selected ZIM files or offline map regions over a trusted LAN
 
 N.O.M.A.D. also includes built-in tools like a Wikipedia content selector, ZIM library manager, and content explorer.
 
@@ -92,6 +93,12 @@ To enable an rclone destination, place the remote configuration in
 `s3:project-nomad/backups` in the compose `.env` file, and recreate the admin container. The
 optional rclone integration uses the [rclone command line](https://rclone.org/docs/) inside the
 admin image and supports listing, uploading, and restoring backup archives.
+
+Cluster Sync is available from **Settings → Cluster Sync**. Generate one shared token, enter the
+peer's Command Center URL and the same token on both boxes, then select the remote ZIM files or map
+regions to mirror. Transfers are authenticated, size-checked, streamed to a temporary file, and
+renamed into place only after the download completes. Pairing is intended for a trusted LAN; use
+HTTPS or network isolation when appropriate.
 
 ## What's Included
 
